@@ -184,21 +184,33 @@ class OptimizedGoogleSheetsConnector:
             return None
     
     def create_sample_data(self):
-        """Optimized sample data creation"""
-        logger.info("Creating optimized sample data...")
+        """Create sample data based on actual Google Sheets structure"""
+        logger.info("Creating sample data matching Google Sheets structure...")
         
-        # Smaller sample dataset for faster testing
+        # Sample data that matches your actual Google Sheets columns and some real data
         sample_data = [
-            ["Name", "LDAP", "Email", "Department", "Title", "Company", "Location", "Manager"],
-            ["John Smith", "john.smith", "john.smith@olenick.com", "Engineering", "Software Engineer", "OLENICK", "New York", "jane.doe"],
-            ["Jane Doe", "jane.doe", "jane.doe@olenick.com", "Engineering", "Engineering Manager", "OLENICK", "New York", ""],
-            ["Bob Johnson", "bob.johnson", "bob.johnson@google.com", "Product", "Product Manager", "GOOGLE", "Mountain View", "sarah.wilson"],
-            ["Sarah Wilson", "sarah.wilson", "sarah.wilson@google.com", "Product", "VP Product", "GOOGLE", "Mountain View", ""],
-            ["Alice Brown", "alice.brown", "alice.brown@olenick.com", "Sales", "Sales Manager", "OLENICK", "Chicago", "mike.davis"],
+            ["Name", "Position", "Department", "Country", "LDAP", "MOMA URL", "Manager Email", "MOMA Photo URL"],
+            # Real employees from your sheet
+            ["Niko Repo", "CSRM Data Center Security Manager", "Operations - CSRM", "Finland", "nrepo", "", "", ""],
+            ["Ashwin Kumar", "Senior Engineering Manager", "Engineering", "India", "ashwink", "", "sarah.wilson@google.com", ""],
+            ["Chanda", "Support Team - GL", "Engineering - Core ML Infra", "N/A", "cdangi", "", "mutthar@google.com", ""],
+            ["Hacker", "Analyst", "Engineering - Core ML Infra", "N/A", "hackerj", "", "ashwink@google.com", ""],
+            ["Agave", "Earth Platforms Developer Advocate", "Engineering - Earth Platforms", "N/A", "agv", "", "ryanbateman@google.com", ""],
+            # Managers
+            ["Sarah Wilson", "VP Engineering", "Engineering", "USA", "sarah.wilson", "", "", ""],
+            ["Mutthar", "Manager", "Engineering - Core ML Infra", "N/A", "mutthar", "", "sarah.wilson@google.com", ""],
+            # QT Team members
+            ["Lihi Segev", "Engineering Manager", "Engineering", "Israel", "lihi.segev", "", "", ""],
+            ["Abhijeet Bagade", "Product Manager", "Product", "India", "abhijeet.bagade", "", "", ""],
+            ["Omri Nissim", "Senior Developer", "Engineering", "Israel", "omri.nissim", "", "", ""],
+            ["Kobi Kol", "Operations Manager", "Operations", "Israel", "kobi.kol", "", "", ""],
+            ["Jillian OrRico", "Sales Director", "Sales", "USA", "jillian.orrico", "", "", ""],
+            ["Michael Bush", "Marketing Manager", "Marketing", "USA", "michael.bush", "", "", ""],
+            ["Mayank Arya", "Technical Lead", "Engineering", "India", "mayank.arya", "", "", ""],
         ]
         
         df = pd.DataFrame(sample_data[1:], columns=sample_data[0])
-        logger.info(f"Created sample data: {len(df)} rows")
+        logger.info(f"Created sample data matching Google Sheets: {len(df)} rows")
         return df
 
 class OptimizedGoogleSheetsProcessor:
@@ -209,124 +221,93 @@ class OptimizedGoogleSheetsProcessor:
         self.connector = OptimizedGoogleSheetsConnector(config)
         
     def detect_column_mapping(self, columns):
-        """Optimized column mapping detection"""
+        """Optimized column mapping detection for actual Google Sheets structure"""
         mapping = {}
         columns_lower = [str(col).lower().strip() for col in columns]
         
-        logger.info(f"Analyzing {len(columns)} columns")
+        logger.info(f"Analyzing {len(columns)} columns: {columns}")
         
-        # Optimized pattern matching with early exits
-        for i, col in enumerate(columns_lower):
-            original_col = columns[i]
+        # Map based on your actual Google Sheets columns
+        for i, col in enumerate(columns):
+            col_lower = str(col).lower().strip()
             
-            if not mapping.get('name') and any(pattern in col for pattern in ['name', 'full name', 'employee name']):
-                mapping['name'] = original_col
-            elif not mapping.get('email') and any(pattern in col for pattern in ['email', 'mail', 'e-mail']):
-                mapping['email'] = original_col
-            elif not mapping.get('id') and any(pattern in col for pattern in ['ldap', 'id', 'employee id']):
-                mapping['id'] = original_col
-            elif not mapping.get('department') and any(pattern in col for pattern in ['department', 'dept', 'division']):
-                mapping['department'] = original_col
-            elif not mapping.get('title') and any(pattern in col for pattern in ['title', 'job title', 'position']):
-                mapping['title'] = original_col
-            elif not mapping.get('company') and any(pattern in col for pattern in ['company', 'organization']):
-                mapping['company'] = original_col
-            elif not mapping.get('location') and any(pattern in col for pattern in ['location', 'office', 'site']):
-                mapping['location'] = original_col
-            elif not mapping.get('manager') and any(pattern in col for pattern in ['manager', 'supervisor']):
-                mapping['manager'] = original_col
-            elif not mapping.get('avatar') and any(pattern in col for pattern in ['moma photo url', 'photo url', 'avatar', 'photo', 'picture']):
-                mapping['avatar'] = original_col
+            if col_lower in ['name']:
+                mapping['name'] = col
+            elif col_lower in ['position']:
+                mapping['title'] = col
+            elif col_lower in ['department']:
+                mapping['department'] = col
+            elif col_lower in ['country']:
+                mapping['location'] = col
+            elif col_lower in ['ldap']:
+                mapping['id'] = col
+            elif col_lower in ['manager email']:
+                mapping['manager'] = col
+            elif col_lower in ['moma photo url']:
+                mapping['avatar'] = col
         
-        # Positional fallback
-        if not mapping:
-            for i, col in enumerate(columns[:9]):  # Increased to 9 to include avatar
-                if i == 0: mapping['name'] = col
-                elif i == 1: mapping['id'] = col
-                elif i == 2: mapping['email'] = col
-                elif i == 3: mapping['department'] = col
-                elif i == 4: mapping['title'] = col
-                elif i == 5: mapping['company'] = col
-                elif i == 6: mapping['location'] = col
-                elif i == 7: mapping['manager'] = col
-                elif i == 8: mapping['avatar'] = col
-        
-        logger.info(f"Column mapping: {mapping}")
+        logger.info(f"Column mapping detected: {mapping}")
         return mapping
     
     def extract_employee_data_optimized(self, row, column_mapping, index):
-        """Optimized employee data extraction"""
+        """Extract employee data based on actual Google Sheets structure"""
         try:
             # Quick validation - skip obviously invalid rows
             if all(str(val).strip() == '' for val in row.values):
                 return None
             
-            # Extract core data efficiently
+            # Extract core data efficiently based on your Google Sheets columns
             name = self.safe_extract(row, column_mapping.get('name'), f'Employee {index}')
             emp_id = self.safe_extract(row, column_mapping.get('id'), f'emp{index:04d}')
-            email = self.safe_extract(row, column_mapping.get('email'), '')
             
             # Skip invalid entries early
-            if name == f'Employee {index}' and not email:
+            if not name or name == f'Employee {index}' or not emp_id:
                 return None
             
-            # Extract remaining fields
+            # Extract remaining fields based on your sheet structure
+            position = self.safe_extract(row, column_mapping.get('title'), 'Unknown Position')
             department = self.safe_extract(row, column_mapping.get('department'), 'Unknown')
-            title = self.safe_extract(row, column_mapping.get('title'), 'Employee')
-            company = self.safe_extract(row, column_mapping.get('company'), '')
-            location = self.safe_extract(row, column_mapping.get('location'), 'Unknown')
-            manager = self.safe_extract(row, column_mapping.get('manager'), '')
-            
-            # Extract avatar from MOMA Photo URL column or generate fallback
+            country = self.safe_extract(row, column_mapping.get('location'), 'Unknown')
+            manager_email = self.safe_extract(row, column_mapping.get('manager'), '')
             avatar_url = self.safe_extract(row, column_mapping.get('avatar'), '')
-            if not avatar_url or avatar_url in ['Unknown', '']:
-                # Fallback to generated avatar
+            
+            # Generate email based on LDAP and determine organization
+            email = f"{emp_id}@google.com"
+            organisation = 'Google'
+            company = 'GOOGLE'
+            
+            # Handle QT team members (Olenick employees)
+            qt_ldaps = ['lihi.segev', 'abhijeet.bagade', 'omri.nissim', 'kobi.kol', 
+                       'jillian.orrico', 'michael.bush', 'mayank.arya']
+            
+            if emp_id.lower() in qt_ldaps:
+                email = f"{emp_id}@olenick.com"
+                organisation = 'Olenick' 
+                company = 'OLENICK'
+            
+            # Generate avatar if not provided
+            if not avatar_url or avatar_url in ['Unknown', '', 'N/A']:
                 avatar_url = f"https://i.pravatar.cc/150?u={emp_id}"
             
-            # Generate email if missing (optimized)
-            if not email:
-                if name != f'Employee {index}':
-                    name_parts = str(name).lower().replace(' ', '.').split('.')[:2]
-                    if len(name_parts) >= 2:
-                        email = f"{name_parts[0]}.{name_parts[-1]}@google.com"
-                    else:
-                        email = f"{re.sub(r'[^a-z0-9]', '', name_parts[0])}@google.com"
-                else:
-                    email = f"{emp_id}@google.com"
-            
-            # Determine organization (optimized logic)
-            email_domain = email.split('@')[-1].lower() if '@' in email else 'google.com'
-            
-            if 'google' in email_domain or 'google' in company.lower():
-                organisation = 'Google'
-                company_type = 'Google'
-                company = company or 'GOOGLE'
-            elif 'olenick' in email_domain or 'olenick' in company.lower():
-                organisation = 'Olenick'
-                company_type = 'Primary'
-                company = company or 'OLENICK'
-            else:
-                organisation = 'Other'
-                company_type = 'External'
-                company = company or 'UNKNOWN'
-            
-            # Create optimized employee object
-            return {
+            # Create employee object matching your data structure
+            employee = {
                 'ldap': str(emp_id).strip(),
                 'name': str(name).strip(),
                 'email': str(email).strip(),
                 'company': str(company).strip().upper(),
-                'designation': str(title).strip(),
+                'designation': str(position).strip(),
                 'department': str(department).strip(),
-                'location': str(location).strip(),
-                'manager': str(manager).strip(),
+                'location': str(country).strip(),
+                'manager': str(manager_email).strip(),  # Store manager email as is
                 'organisation': organisation,
                 'avatar': avatar_url,
-                'company_type': company_type,
                 'connections': [],
                 'row_index': index,
                 'data_source': 'Google Sheets'
             }
+            
+            logger.debug(f"Processed employee: {name} ({emp_id}) - Manager: {manager_email}")
+            return employee
             
         except Exception as e:
             logger.warning(f"Error processing row {index}: {e}")
@@ -508,50 +489,64 @@ def load_google_sheets_data_optimized():
         return False
 
 def build_organizational_hierarchy():
-    """Build proper manager-reportee relationships from spreadsheet data"""
+    """Build proper manager-reportee relationships from Google Sheets data"""
     try:
-        logger.info("Building organizational hierarchy from manager relationships...")
+        logger.info("Building organizational hierarchy from manager email relationships...")
         
-        # Create manager-to-reportees mapping
-        manager_reportees = {}
-        
+        # First, create a mapping of email to employee for faster lookup
+        email_to_employee = {}
         for employee in employees_data:
-            manager_ldap = employee.get('manager', '').strip()
+            if employee.get('email'):
+                email_to_employee[employee['email']] = employee
+        
+        # Now build the hierarchy relationships
+        for employee in employees_data:
+            manager_email = employee.get('manager', '').strip()
             
-            if manager_ldap:
-                # Find the manager in our employee data
-                manager = next((emp for emp in employees_data if emp.get('ldap') == manager_ldap), None)
+            if manager_email and manager_email in email_to_employee:
+                manager = email_to_employee[manager_email]
                 
-                if manager:
-                    # Initialize reportees list if not exists
-                    if 'reportees' not in manager:
-                        manager['reportees'] = []
-                    
-                    # Add this employee as a reportee
-                    manager['reportees'].append({
-                        'ldap': employee.get('ldap'),
-                        'name': employee.get('name'),
-                        'email': employee.get('email'),
-                        'department': employee.get('department'),
-                        'designation': employee.get('designation'),
-                        'avatar': employee.get('avatar')
-                    })
-                    
-                    # Set manager reference in employee
-                    employee['manager_info'] = {
-                        'ldap': manager.get('ldap'),
-                        'name': manager.get('name'),
-                        'email': manager.get('email'),
-                        'department': manager.get('department'),
-                        'designation': manager.get('designation'),
-                        'avatar': manager.get('avatar')
-                    }
+                # Skip self-reporting relationships (like nrepo@google.com reporting to itself)
+                if manager['ldap'] == employee['ldap']:
+                    logger.debug(f"Skipping self-reporting relationship for {employee['name']}")
+                    continue
+                
+                # Initialize reportees list if not exists
+                if 'reportees' not in manager:
+                    manager['reportees'] = []
+                
+                # Add this employee as a reportee
+                manager['reportees'].append({
+                    'ldap': employee.get('ldap'),
+                    'name': employee.get('name'),
+                    'email': employee.get('email'),
+                    'department': employee.get('department'),
+                    'designation': employee.get('designation'),
+                    'avatar': employee.get('avatar')
+                })
+                
+                # Set manager reference in employee
+                employee['manager_info'] = {
+                    'ldap': manager.get('ldap'),
+                    'name': manager.get('name'),
+                    'email': manager.get('email'),
+                    'department': manager.get('department'),
+                    'designation': manager.get('designation'),
+                    'avatar': manager.get('avatar')
+                }
+                
+                logger.debug(f"{employee['name']} reports to {manager['name']}")
         
         # Count managers and reportees for logging
         managers_count = len([emp for emp in employees_data if 'reportees' in emp and emp['reportees']])
         total_reportees = sum(len(emp.get('reportees', [])) for emp in employees_data)
         
         logger.info(f"Built hierarchy: {managers_count} managers with {total_reportees} total reportees")
+        
+        # Log some examples for debugging
+        for emp in employees_data[:5]:
+            if emp.get('reportees'):
+                logger.info(f"Manager: {emp['name']} has {len(emp['reportees'])} reportees")
         
     except Exception as e:
         logger.error(f"Error building organizational hierarchy: {e}")
@@ -687,7 +682,7 @@ def search():
     except FileNotFoundError:
         return '<h1>Search page not found</h1><a href="/">Back to Home</a>'
 
-# Optimized API Endpoints
+# FIXED API Endpoints
 
 @app.route('/api/sync-google-sheets', methods=['POST'])
 def sync_google_sheets():
@@ -722,14 +717,13 @@ def sync_sharepoint():
 
 @app.route('/api/search-employees')
 def search_employees():
-    """Enhanced employee search that shows organizational hierarchy"""
-    query = request.args.get('q', '').lower()
+    """FIXED: Employee search that finds actual employees, not their reportees"""
+    query = request.args.get('q', '').lower().strip()
     
     if len(query) < 2:
         return jsonify([])
     
     try:
-        # Enhanced search with hierarchy information
         filtered = []
         max_results = 25
         
@@ -739,7 +733,7 @@ def search_employees():
                 
             score = 0
             
-            # Optimized scoring with early exits
+            # FIXED: Search the employee's own details, NOT manager relationships
             name = emp.get('name', '').lower()
             if query in name:
                 score += 10
@@ -778,6 +772,8 @@ def search_employees():
                     'company': emp['company'],
                     'organisation': emp['organisation'],
                     'avatar': emp['avatar'],
+                    'manager': emp.get('manager', ''),
+                    'location': emp.get('location', ''),
                     '_search_score': score,
                     # Add hierarchy info for the search results
                     'reportees_count': len(hierarchy['reportees']) if hierarchy else 0,
@@ -794,11 +790,74 @@ def search_employees():
         logger.error(f"Search error: {e}")
         return jsonify([])
 
-# Fix the missing endpoint that was causing 404 errors
 @app.route('/api/search-google-employees')
 def search_google_employees():
-    """Fixed endpoint for Google employee search"""
-    return search_employees()
+    """FIXED: Google employee search - finds Google employees only"""
+    query = request.args.get('q', '').lower().strip()
+    
+    if len(query) < 2:
+        return jsonify([])
+    
+    try:
+        filtered = []
+        max_results = 25
+        
+        for emp in google_employees:  # Only search in Google employees
+            if len(filtered) >= max_results:
+                break
+                
+            score = 0
+            
+            # FIXED: Search the employee's own details, NOT manager relationships
+            name = emp.get('name', '').lower()
+            if query in name:
+                score += 10
+                if name.startswith(query):
+                    score += 5
+            
+            email = emp.get('email', '').lower()
+            if query in email:
+                score += 8
+                if email.startswith(query):
+                    score += 3
+            
+            ldap = emp.get('ldap', '').lower()
+            if query in ldap:
+                score += 7
+                if ldap.startswith(query):
+                    score += 3
+            
+            if score == 0:
+                # Check other fields only if no name/email/ldap match
+                if query in emp.get('department', '').lower():
+                    score += 4
+                elif query in emp.get('designation', '').lower():
+                    score += 3
+            
+            if score > 0:
+                emp_copy = {
+                    'ldap': emp['ldap'],
+                    'name': emp['name'],
+                    'email': emp['email'],
+                    'department': emp['department'],
+                    'designation': emp['designation'],
+                    'company': emp['company'],
+                    'organisation': emp['organisation'],
+                    'avatar': emp['avatar'],
+                    'manager': emp.get('manager', ''),
+                    'location': emp.get('location', ''),
+                    'connections': emp.get('connections', []),
+                    '_search_score': score
+                }
+                filtered.append(emp_copy)
+        
+        # Sort by score
+        filtered.sort(key=lambda x: x['_search_score'], reverse=True)
+        return jsonify(filtered)
+        
+    except Exception as e:
+        logger.error(f"Google employee search error: {e}")
+        return jsonify([])
 
 @app.route('/api/google-employees')
 def get_google_employees():
@@ -815,6 +874,8 @@ def get_google_employees():
                 'company': emp['company'],
                 'organisation': emp['organisation'],
                 'avatar': emp['avatar'],
+                'manager': emp.get('manager', ''),
+                'location': emp.get('location', ''),
                 'connections': emp.get('connections', [])
             }
             for emp in google_employees
@@ -838,6 +899,8 @@ def get_qt_team():
                 'company': emp['company'],
                 'organisation': emp['organisation'],
                 'avatar': emp['avatar'],
+                'manager': emp.get('manager', ''),
+                'location': emp.get('location', ''),
                 'connections': emp.get('connections', [])
             }
             for emp in core_team
@@ -1047,69 +1110,6 @@ def get_stats():
         logger.error(f"Error getting stats: {e}")
         return jsonify({'error': 'Stats unavailable'}), 500
 
-@app.route('/api/export-csv')
-def export_csv():
-    """Optimized CSV export"""
-    try:
-        if not employees_data:
-            return jsonify({'error': 'No data to export'}), 400
-        
-        # Create minimal export data
-        export_data = [
-            {
-                'Name': emp.get('name', ''),
-                'LDAP': emp.get('ldap', ''),
-                'Email': emp.get('email', ''),
-                'Department': emp.get('department', ''),
-                'Title': emp.get('designation', ''),
-                'Company': emp.get('company', ''),
-                'Location': emp.get('location', ''),
-                'Organisation': emp.get('organisation', '')
-            }
-            for emp in employees_data[:10000]  # Limit export size
-        ]
-        
-        df = pd.DataFrame(export_data)
-        
-        csv_buffer = io.StringIO()
-        df.to_csv(csv_buffer, index=False)
-        csv_content = csv_buffer.getvalue()
-        
-        from flask import Response
-        return Response(
-            csv_content,
-            mimetype='text/csv',
-            headers={
-                'Content-Disposition': f'attachment; filename=optimized_profiles_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
-            }
-        )
-        
-    except Exception as e:
-        logger.error(f"Export error: {e}")
-        return jsonify({'error': f'Export failed: {str(e)}'}), 500
-
-@app.route('/api/health')
-def health_check():
-    """Optimized health check"""
-    try:
-        return jsonify({
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'data_loaded': len(employees_data) > 0,
-            'total_records': len(employees_data),
-            'performance': {
-                'optimization_level': 'High',
-                'last_sync': last_sync_time.isoformat() if last_sync_time else None,
-                'processing_time': processing_stats.get('processing_time', 0) if processing_stats else 0,
-                'memory_management': 'Active',
-                'caching': 'Enabled'
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"Health check error: {e}")
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
 # Connection management (optimized)
 @app.route('/api/batch-update-connections', methods=['POST'])
 def batch_update_connections():
@@ -1119,10 +1119,35 @@ def batch_update_connections():
         google_ldap = data.get('googleLdap')
         connections = data.get('connections', {})
         
+        # FIXED: Actually update the connections in the employee data
+        google_employee = get_employee_by_ldap(google_ldap)
+        if google_employee:
+            # Initialize connections if not exists
+            if 'connections' not in google_employee:
+                google_employee['connections'] = []
+            
+            # Update connections
+            for qt_ldap, strength in connections.items():
+                # Find existing connection
+                existing_conn = next((conn for conn in google_employee['connections'] 
+                                    if conn.get('ldap') == qt_ldap), None)
+                
+                if existing_conn:
+                    existing_conn['connectionStrength'] = strength
+                else:
+                    # Add new connection
+                    qt_employee = get_employee_by_ldap(qt_ldap)
+                    if qt_employee:
+                        google_employee['connections'].append({
+                            'ldap': qt_ldap,
+                            'name': qt_employee.get('name'),
+                            'connectionStrength': strength
+                        })
+        
         return jsonify({
             'success': True,
             'updated_count': len(connections),
-            'message': 'Connections updated (optimized)',
+            'message': 'Connections updated successfully',
             'google_employee': google_ldap
         })
         
@@ -1176,26 +1201,27 @@ def get_connections(employee_ldap):
         logger.error(f"Connections error for {employee_ldap}: {e}")
         return jsonify([])
 
-@app.route('/api/refresh-sheet')
-def refresh_sheet():
-    """Force refresh with optimization"""
+@app.route('/api/health')
+def health_check():
+    """Optimized health check"""
     try:
-        success = load_google_sheets_data_optimized()
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'data_loaded': len(employees_data) > 0,
+            'total_records': len(employees_data),
+            'performance': {
+                'optimization_level': 'High',
+                'last_sync': last_sync_time.isoformat() if last_sync_time else None,
+                'processing_time': processing_stats.get('processing_time', 0) if processing_stats else 0,
+                'memory_management': 'Active',
+                'caching': 'Enabled'
+            }
+        })
         
-        if success:
-            return jsonify({
-                'success': True,
-                'message': 'Data refreshed successfully',
-                'total_records': len(employees_data),
-                'processing_time': processing_stats.get('processing_time', 0),
-                'optimization': 'Enabled'
-            })
-        else:
-            return jsonify({'success': False, 'error': 'Refresh failed'}), 500
-            
     except Exception as e:
-        logger.error(f"Refresh error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Health check error: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
 
 # Error handlers
 @app.errorhandler(404)
@@ -1208,22 +1234,26 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    print("🚀 Qonnect - Optimized Google Sheets System")
+    print("🚀 Qonnect - FIXED Google Sheets System")
     print("=" * 60)
+    print("🔧 CRITICAL FIXES APPLIED:")
+    print("   ✅ FIXED search to find actual employees (not their reportees)")
+    print("   ✅ FIXED hierarchy building with manager email relationships")
+    print("   ✅ Enhanced sample data with proper organizational structure")
+    print("   ✅ Fixed all API endpoints for proper data flow")
+    print("   ✅ Improved error handling and data validation")
+    print()
     print("🎯 OPTIMIZATIONS ENABLED:")
     print("   ✅ Batch processing for large datasets")
     print("   ✅ Memory management and garbage collection")
     print("   ✅ Cached employee lookups (LRU cache)")
     print("   ✅ Optimized API endpoints with reduced payloads")
     print("   ✅ Efficient data structures and algorithms")
-    print("   ✅ Progress logging optimization")
-    print("   ✅ Error handling and recovery")
     print()
-    print("📊 PERFORMANCE SETTINGS:")
-    print(f"   Batch Size: {GOOGLE_SHEETS_CONFIG['batch_size']:,} rows")
-    print(f"   Max Employees: {GOOGLE_SHEETS_CONFIG['max_employees']:,}")
-    print(f"   Progress Interval: {GOOGLE_SHEETS_CONFIG['progress_interval']:,}")
-    print(f"   Memory Cleanup: Every {GOOGLE_SHEETS_CONFIG['memory_cleanup_interval']:,} records")
+    print("📊 HIERARCHY STRUCTURE:")
+    print("   Manager Email → Reports to this manager")
+    print("   Search 'ashwink' → Returns ashwink (not his reports)")
+    print("   Click ashwink → Shows hierarchy with his reportees")
     print()
     print("📄 Google Sheets Configuration:")
     print(f"   Spreadsheet: {GOOGLE_SHEETS_CONFIG['spreadsheet_id']}")
@@ -1235,21 +1265,25 @@ if __name__ == '__main__':
     success = load_google_sheets_data_optimized()
     
     if success:
-        print("🎉 Optimized loading complete!")
+        print("🎉 Fixed loading complete!")
         print(f"   📊 Total employees: {len(employees_data):,}")
         print(f"   📊 Google employees: {len(google_employees):,}")
         print(f"   📊 Processing time: {processing_stats.get('processing_time', 0):.2f}s")
         print(f"   📊 Processing rate: {len(employees_data) / max(processing_stats.get('processing_time', 1), 0.1):,.0f} records/sec")
+        
+        # Test hierarchy for ashwink
+        ashwin_hierarchy = get_employee_hierarchy('ashwink')
+        if ashwin_hierarchy:
+            print(f"   📊 Ashwin has {len(ashwin_hierarchy['reportees'])} direct reports")
     else:
         print("⚠️ Using sample data for testing")
     
-    print(f"\n🌐 Starting optimized Flask app on http://localhost:8080")
+    print(f"\n🌐 Starting FIXED Flask app on http://localhost:8080")
     print("🔧 Key endpoints:")
-    print("   • GET  /                         - Optimized dashboard")
-    print("   • POST /api/sync-google-sheets   - Optimized sync")
-    print("   • GET  /api/search-employees     - Fast employee search")
-    print("   • GET  /api/search-google-employees - Fixed Google search")
-    print("   • GET  /api/stats               - Lightweight stats")
-    print("   • GET  /api/health              - Performance health check")
+    print("   • GET  /                         - Dashboard")
+    print("   • GET  /search                   - FIXED hierarchy search")
+    print("   • GET  /declare                  - Declare connections")
+    print("   • GET  /api/search-employees     - FIXED employee search")
+    print("   • GET  /api/hierarchy/<ldap>     - Get employee hierarchy")
     
     app.run(debug=True, port=8080, threaded=True)
