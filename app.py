@@ -33,18 +33,21 @@ GOOGLE_SHEETS_CONFIG = {
         'https://www.googleapis.com/auth/spreadsheets.readonly',
         'https://www.googleapis.com/auth/drive.readonly'
     ],
-    'batch_size': 1000,
-    'max_employees': 100000,
-    'progress_interval': 1000,
-    'memory_cleanup_interval': 5000
+    # Performance settings
+    'batch_size': 1000,  # Process in batches to save memory
+    'max_employees': 100000,  # Safety limit
+    'progress_interval': 1000,  # Log progress every N records
+    'memory_cleanup_interval': 5000  # Force garbage collection every N records
 }
 
+# Global data storage - Optimized
 employees_data = []
 google_employees = []
 core_team = []
 processing_stats = {}
 last_sync_time = None
 
+# Performance optimization: Cache frequently accessed data
 @lru_cache(maxsize=1000)
 def get_employee_by_ldap(ldap: str):
     """Cached employee lookup by LDAP"""
@@ -719,14 +722,14 @@ def sync_sharepoint():
 
 @app.route('/api/search-employees')
 def search_employees():
-    """Optimized employee search with caching"""
+    """Enhanced employee search that shows organizational hierarchy"""
     query = request.args.get('q', '').lower()
     
     if len(query) < 2:
         return jsonify([])
     
     try:
-        # Optimized search with early termination
+        # Enhanced search with hierarchy information
         filtered = []
         max_results = 25
         
@@ -749,16 +752,23 @@ def search_employees():
                 if email.startswith(query):
                     score += 3
             
+            ldap = emp.get('ldap', '').lower()
+            if query in ldap:
+                score += 7
+                if ldap.startswith(query):
+                    score += 3
+            
             if score == 0:
-                # Check other fields only if no name/email match
-                if query in emp.get('ldap', '').lower():
-                    score += 7
-                elif query in emp.get('department', '').lower():
+                # Check other fields only if no name/email/ldap match
+                if query in emp.get('department', '').lower():
                     score += 4
                 elif query in emp.get('designation', '').lower():
                     score += 3
             
             if score > 0:
+                # Get hierarchy information for this employee
+                hierarchy = get_employee_hierarchy(emp['ldap'])
+                
                 emp_copy = {
                     'ldap': emp['ldap'],
                     'name': emp['name'],
@@ -768,7 +778,11 @@ def search_employees():
                     'company': emp['company'],
                     'organisation': emp['organisation'],
                     'avatar': emp['avatar'],
-                    '_search_score': score
+                    '_search_score': score,
+                    # Add hierarchy info for the search results
+                    'reportees_count': len(hierarchy['reportees']) if hierarchy else 0,
+                    'manager_chain_length': len(hierarchy['manager_chain']) if hierarchy else 0,
+                    'has_reportees': len(hierarchy['reportees']) > 0 if hierarchy else False
                 }
                 filtered.append(emp_copy)
         
