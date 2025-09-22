@@ -33,11 +33,10 @@ GOOGLE_SHEETS_CONFIG = {
         'https://www.googleapis.com/auth/spreadsheets.readonly',
         'https://www.googleapis.com/auth/drive.readonly'
     ],
-    # Performance settings
-    'batch_size': 1000,  # Process in batches to save memory
-    'max_employees': 100000,  # Safety limit
-    'progress_interval': 1000,  # Log progress every N records
-    'memory_cleanup_interval': 5000  # Force garbage collection every N records
+    'batch_size': 1000,
+    'max_employees': 100000,
+    'progress_interval': 1000,
+    'memory_cleanup_interval': 5000
 }
 
 # Global data storage - Optimized
@@ -47,7 +46,6 @@ core_team = []
 processing_stats = {}
 last_sync_time = None
 
-# Performance optimization: Cache frequently accessed data
 @lru_cache(maxsize=1000)
 def get_employee_by_ldap(ldap: str):
     """Cached employee lookup by LDAP"""
