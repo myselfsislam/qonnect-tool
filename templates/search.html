@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qonnect - Search Connection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+    <link rel="stylesheet" href="/static/css/style.css">
+  </head>
+<body class="bg-gray-50 text-gray-900">
+    <nav class="w-full p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
+        <div class="container mx-auto flex items-center justify-between">
+            <a href="/" class="flex items-center gap-5">
+                <i class="fas fa-project-diagram text-2xl text-primary text-white"></i>
+                <h1 class="text-2xl font-bold text-white">Qonnect</h1>
+            </a>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl p-8 mx-auto">
+      <div class="text-center mb-8">
+        <h1 class="text-2xl font-bold">Organization Hierarchy Chart</h1>
+        <p class="muted mt-2">Search for Google employees to find the shortest connection path from the QT team.</p>
+      </div>
+
+      <div class="flex justify-center mb-8">
+        <div class="relative w-full max-w-md">
+          <div class="relative">
+            <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"></i>
+            <input type="text" id="searchInput" placeholder="Search Google employees..." class="input pl-10" />
+          </div>
+          <div id="suggestions" class="suggestions hidden"></div>
+        </div>
+      </div>
+
+      <div id="mainContent">
+        <div class="text-center muted py-16">
+          <p>Search and select a Google employee to view their hierarchy and connections.</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // --- API Configuration ---
+      const API_BASE = '';  // Flask serves from same origin
+      
+      // --- Global State ---
+      let googleEmployees = [];
+      let coreTeam = [];
+      let selectedEmployee = null;
+      let expandedConnection = null;
+      const employeeMap = new Map();
+
+      // --- API Functions ---
+      async function fetchData() {
+        try {
+          const [googleResponse, qtResponse] = await Promise.all([
+            fetch(`${API_BASE}/api/google-employees`),
+            fetch(`${API_BASE}/api/qt-team`)
+          ]);
+          
+          googleEmployees = await googleResponse.json();
+          coreTeam = await qtResponse.json();
+          
+          // Build employee map
+          employeeMap.clear();
+          googleEmployees.forEach(e => employeeMap.set(e.ldap, e));
+          coreTeam.forEach(e => employeeMap.set(e.ldap, e));
+        } catch (error) {
+          console.error('Error fetching data:', error);
+        }
+      }
+
+      async function searchGoogleEmployees(query) {
+        try {
+          const response = await fetch(`${API_BASE}/api/search-google-employees?q=${encodeURIComponent(query)}`);
+          return await response.json();
+        } catch (error) {
+          console.error('Error searching employees:', error);
+          return [];
+        }
+      }
+
+      async function getConnections(googleLdap) {
+        try {
+          const response = await fetch(`${API_BASE}/api/connections/${encodeURIComponent(googleLdap)}`);
+          return await response.json();
+        } catch (error) {
+          console.error('Error fetching connections:', error);
+          return [];
+        }
+      }
+
+      // --- UI Functions ---
+      function createEmployeeCard(employee, className = "") {
+        if (!employee) return document.createElement("div");
+        const card = document.createElement("div");
+        const borderClass = employee.company === "GOOGLE" ? "google-border" : "qt-border";
+        card.className = `unified-card ${borderClass} ${className}`;
+        card.innerHTML = `
+                <div class="flex-1 flex flex-col items-center text-center justify-center">
+                    <img src="${employee.avatar || ""}" alt="${employee.name}" class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">${employee.organisation || employee.company}</p>
+                    <h4 class="font-bold text-sm text-gray-800">${employee.name}</h4>
+                    <p class="text-xs text-gray-500">${employee.designation}</p>
+                    <p class="text-[10px] text-gray-400 mt-1 font-mono">${employee.ldap}</p>
+                </div>
+            `;
+        return card;
+      }
+
+      function createConnectionTooltip(path, onExpand) {
+        const tooltip = document.createElement("div");
+        tooltip.className = "tooltip flex justify-center";
+        const pathLength = path.length;
+
+        tooltip.innerHTML = `
+                <button class="btn connection-btn">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    <span class="connection-count">${pathLength}</span>
+                </button>
+                <div class="tooltip-content">
+                    <div class="space-y-2">
+                        <p class="text-sm font-semibold">
+                            Shortest Path Found (${pathLength} ${pathLength === 1 ? "step" : "steps"})
+                        </p>
+                        <p class="text-xs muted italic pt-1">
+                            Click to expand full hierarchy path.
+                        </p>
+                    </div>
+                </div>
+            `;
+
+        tooltip.querySelector("button").addEventListener("click", onExpand);
+        return tooltip;
+      }
+
+      async function renderHierarchyChart(employee) {
+        const connections = await getConnections(employee.ldap);
+        const content = document.createElement("div");
+        content.className = "space-y-0";
+
+        content.innerHTML = `
+                <div class="flex justify-center">${createEmployeeCard(employee).outerHTML}</div>
+                <div class="flex justify-center"><div class="w-px h-8 bg-gray-300"></div></div>
+                <div class="text-center text-sm font-semibold text-gray-600">Shortest paths from QT Team</div>
+            `;
+
+        if (connections.length > 0) {
+          const connectionsContainer = document.createElement("div");
+          connectionsContainer.className = "flex flex-wrap justify-center items-start gap-8 pt-0";
+
+          connections.forEach((conn) => {
+            const qtEmployee = coreTeam.find((e) => e.ldap === conn.qtLdap);
+            if (!qtEmployee) return;
+
+            const connectionDiv = document.createElement("div");
+            connectionDiv.className = "flex flex-col items-center gap-0";
+            const topLine = document.createElement("div");
+            topLine.className = "w-px h-4 bg-gray-300";
+            const tooltip = createConnectionTooltip(conn.path, () => showExpandedHierarchy(qtEmployee, conn.path));
+            const bottomLine = document.createElement("div");
+            bottomLine.className = "w-px h-4 bg-gray-300";
+            const card = createEmployeeCard(qtEmployee);
+
+            connectionDiv.appendChild(topLine);
+            connectionDiv.appendChild(tooltip);
+            connectionDiv.appendChild(bottomLine);
+            connectionDiv.appendChild(card);
+            connectionsContainer.appendChild(connectionDiv);
+          });
+          content.appendChild(connectionsContainer);
+        } else {
+          content.innerHTML += '<div class="text-center muted py-8"><p>No connection paths found to this employee.</p></div>';
+        }
+        return content;
+      }
+
+      function renderExpandedHierarchy(qtEmployee, path) {
+        const content = document.createElement("div");
+        content.className = "space-y-6";
+
+        content.innerHTML = `
+                <div class="flex justify-center">
+                    <button id="backBtn" class="bg-white border border-gray-300 text-gray-700 text-sm font-semibold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-gray-50">
+                        <i data-lucide="arrow-left" class="w-4 h-4"></i>Back to Connections View
+                    </button>
+                </div>
+                <div class="text-center">
+                    <h2 class="text-xl font-bold">Connection Path</h2>
+                    <p class="muted mt-1">From ${qtEmployee.name} to ${employeeMap.get(path[path.length - 1]).name}</p>
+                </div>
+            `;
+
+        const treeContainer = document.createElement("div");
+        treeContainer.className = "tree-container";
+
+        const pathEmployees = path.map((ldap) => employeeMap.get(ldap));
+        const nodeMap = new Map(path.map((ldap) => [ldap, { employee: employeeMap.get(ldap), children: [] }]));
+        const directConnectionLdap = path[0];
+
+        for (let i = 0; i < pathEmployees.length - 1; i++) {
+          const current = pathEmployees[i];
+          const next = pathEmployees[i + 1];
+
+          if (next.manager === current.ldap) {
+            nodeMap.get(current.ldap).children.push(nodeMap.get(next.ldap));
+          } else if (current.manager === next.ldap) {
+            nodeMap.get(next.ldap).children.push(nodeMap.get(current.ldap));
+          }
+        }
+
+        let rootNodeInPath = nodeMap.get(path[0]);
+        while (true) {
+          const parentInPath = pathEmployees.find((p) => p.ldap === rootNodeInPath.employee.manager && path.includes(p.ldap));
+          if (parentInPath) {
+            rootNodeInPath = nodeMap.get(parentInPath.ldap);
+          } else {
+            break;
+          }
+        }
+
+        function buildTreeHtml(node) {
+          const nodeEl = document.createElement("div");
+          nodeEl.className = "tree-node";
+          nodeEl.appendChild(createEmployeeCard(node.employee));
+
+          if (node.children.length > 0) {
+            const childrenEl = document.createElement("div");
+            childrenEl.className = "tree-children";
+            node.children.forEach((child) => {
+              childrenEl.appendChild(buildTreeHtml(child));
+            });
+            nodeEl.appendChild(childrenEl);
+          }
+
+          if (node.employee.ldap === directConnectionLdap) {
+            const qtContainer = document.createElement("div");
+            qtContainer.className = "flex flex-col items-center pt-8 relative";
+            qtContainer.innerHTML = `<div class="absolute top-0 w-px h-8 bg-purple-400"></div>`;
+            qtContainer.appendChild(createEmployeeCard(qtEmployee));
+            nodeEl.appendChild(qtContainer);
+          }
+
+          return nodeEl;
+        }
+
+        treeContainer.appendChild(buildTreeHtml(rootNodeInPath));
+        content.appendChild(treeContainer);
+        content.querySelector("#backBtn").addEventListener("click", () => {
+          expandedConnection = null;
+          showSelectedEmployee();
+        });
+
+        return content;
+      }
+
+      function showExpandedHierarchy(qtEmployee, path) {
+        expandedConnection = { qtEmployee, path };
+        const mainContent = document.getElementById("mainContent");
+        mainContent.innerHTML = "";
+        mainContent.appendChild(renderExpandedHierarchy(qtEmployee, path));
+        lucide.createIcons();
+      }
+
+      async function showSelectedEmployee() {
+        if (!selectedEmployee) return;
+        const mainContent = document.getElementById("mainContent");
+        mainContent.innerHTML = "";
+
+        if (expandedConnection) {
+          mainContent.appendChild(renderExpandedHierarchy(expandedConnection.qtEmployee, expandedConnection.path));
+        } else {
+          const hierarchyChart = await renderHierarchyChart(selectedEmployee);
+          mainContent.appendChild(hierarchyChart);
+        }
+        lucide.createIcons();
+      }
+
+      function setupSearch() {
+        const searchInput = document.getElementById("searchInput");
+        const suggestions = document.getElementById("suggestions");
+
+        searchInput.addEventListener("input", async (e) => {
+          const searchTerm = e.target.value.toLowerCase();
+          if (searchTerm.length === 0) {
+            suggestions.classList.add("hidden");
+            return;
+          }
+
+          const filtered = await searchGoogleEmployees(searchTerm);
+
+          suggestions.innerHTML = "";
+          if (filtered.length > 0) {
+            filtered.forEach((employee) => {
+              const item = document.createElement("button");
+              item.className = "suggestion-item";
+              item.innerHTML = `
+                            <img src="${employee.avatar}" alt="${employee.name}" class="w-8 h-8 rounded-full">
+                            <div>
+                                <div>${employee.name}</div>
+                                <div class="text-sm muted">${employee.designation}</div>
+                                <div class="text-sm muted">${employee.ldap}</div>
+                            </div>`;
+              item.addEventListener("click", () => {
+                searchInput.value = employee.name;
+                suggestions.classList.add("hidden");
+                selectedEmployee = employee;
+                expandedConnection = null;
+                showSelectedEmployee();
+              });
+              suggestions.appendChild(item);
+            });
+            suggestions.classList.remove("hidden");
+          } else {
+            suggestions.classList.add("hidden");
+          }
+        });
+        
+        document.addEventListener("click", (e) => {
+          if (!e.target.closest(".relative")) suggestions.classList.add("hidden");
+        });
+      }
+
+      async function init() {
+        try {
+          await fetchData();
+          setupSearch();
+          lucide.createIcons();
+        } catch (error) {
+          console.error('Error initializing application:', error);
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", init);
+    </script>
+  </body>
+</html>

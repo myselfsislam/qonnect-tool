@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qonnect - Declare Connection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+  </head>
+<body class="bg-gray-50 text-gray-900">
+    <nav class="w-full p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
+        <div class="container mx-auto flex items-center justify-between">
+            <a href="/" class="flex items-center gap-5">
+                <i class="fas fa-project-diagram text-2xl text-primary text-white"></i>
+                <h1 class="text-2xl font-bold text-white">Qonnect</h1>
+            </a>
+        </div>
+    </nav>
+
+    <main class="w-full max-w-6xl mx-auto mt-12 p-4">
+      <div class="text-center">
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900">Declare a Connection</h2>
+        <p class="text-gray-600 mt-2">Search for a Google employee to view and manage your team's connections.</p>
+      </div>
+
+      <div class="flex justify-center my-8">
+        <div class="relative w-full max-w-lg">
+          <div class="relative">
+            <i data-lucide="search" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5"></i>
+            <input type="text" id="searchInput" placeholder="Search by name or LDAP (e.g., alex.chen@google.com)..." class="input pl-12" />
+          </div>
+          <div id="suggestions" class="suggestions hidden">
+            <div id="suggestionsList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="mainContent" class="mt-8">
+        <div class="text-center text-gray-500 py-16">
+          <p>Search for a Google employee to begin.</p>
+        </div>
+
+        <div class="mt-8 flex justify-center">
+          <button
+            id="saveChangesBtn"
+            class="hidden bg-primary text-white text-sm font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-primary-dark transition-all duration-300 transform flex items-center gap-2"
+          >
+            <i data-lucide="save" class="w-5 h-5"></i>
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      // --- API Configuration ---
+      const API_BASE = '';  // Flask serves from same origin
+      
+      // --- Global State ---
+      let googleEmployees = [];
+      let coreTeam = [];
+      let selectedGoogleEmployee = null;
+      let swiperInstance = null;
+      let pendingChanges = {};
+
+      // --- API Functions ---
+      async function fetchGoogleEmployees() {
+        try {
+          const response = await fetch(`${API_BASE}/api/google-employees`);
+          googleEmployees = await response.json();
+        } catch (error) {
+          console.error('Error fetching Google employees:', error);
+        }
+      }
+
+      async function fetchQTTeam() {
+        try {
+          const response = await fetch(`${API_BASE}/api/qt-team`);
+          coreTeam = await response.json();
+        } catch (error) {
+          console.error('Error fetching QT team:', error);
+        }
+      }
+
+      async function searchGoogleEmployees(query) {
+        try {
+          const response = await fetch(`${API_BASE}/api/search-google-employees?q=${encodeURIComponent(query)}`);
+          return await response.json();
+        } catch (error) {
+          console.error('Error searching employees:', error);
+          return [];
+        }
+      }
+
+      async function saveConnections(googleLdap, connections) {
+        try {
+          const response = await fetch(`${API_BASE}/api/batch-update-connections`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              googleLdap,
+              connections
+            }),
+          });
+          return await response.json();
+        } catch (error) {
+          console.error('Error saving connections:', error);
+          return { success: false, error: 'Network error' };
+        }
+      }
+
+      // --- UI Functions ---
+      function createEmployeeCard(employee, isGoogleEmployeeCard = false) {
+        const card = document.createElement("div");
+
+        let bottomContent = "";
+        if (!isGoogleEmployeeCard) {
+          const connection = employee.connections.find((c) => c.ldap === selectedGoogleEmployee.ldap);
+          const pendingStrength = pendingChanges[employee.ldap];
+          const currentStrength = pendingStrength || connection?.connectionStrength;
+
+          bottomContent = `
+                    <div class="mt-3 pt-3 border-t border-gray-100">
+                         <p class="text-xs font-medium text-gray-500 mb-2">Set Connection:</p>
+                         <div class="flex gap-2 justify-center">
+                            <button data-ldap="${employee.ldap}" data-strength="weak" class="strength-btn ${currentStrength === "weak" ? "active-weak" : ""} ${
+            pendingStrength === "weak" ? "pending-weak" : ""
+          }">Weak</button>
+                            <button data-ldap="${employee.ldap}" data-strength="medium" class="strength-btn ${
+            currentStrength === "medium" ? "active-medium" : ""
+          } ${pendingStrength === "medium" ? "pending-medium" : ""}">Medium</button>
+                            <button data-ldap="${employee.ldap}" data-strength="strong" class="strength-btn ${
+            currentStrength === "strong" ? "active-strong" : ""
+          } ${pendingStrength === "strong" ? "pending-strong" : ""}">Strong</button>
+                        </div>
+                    </div>`;
+        }
+
+        const borderClass = isGoogleEmployeeCard ? "google-border" : "border-2 border-purple-800";
+
+        card.className = `unified-card w-full h-full ${borderClass}`;
+
+        card.innerHTML = `
+                <div class="flex-1 flex flex-col items-center text-center justify-center">
+                    <img src="${employee.avatar}" alt="${employee.name}" class="w-16 h-16 rounded-full mb-2 border-2 border-white shadow">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-primary">${employee.organisation}</p>
+                    <h4 class="font-bold text-md text-gray-800">${employee.name}</h4>
+                    <p class="text-xs text-gray-500">${employee.designation}</p>
+                    <p class="text-[10px] text-gray-400 mt-1 font-mono">${employee.ldap}</p>
+                </div>
+                ${bottomContent}`;
+
+        return card;
+      }
+
+      async function renderConnectionInterface(googleEmployee) {
+        selectedGoogleEmployee = googleEmployee;
+        pendingChanges = {};
+        document.getElementById("saveChangesBtn").classList.add("hidden");
+
+        const mainContent = document.getElementById("mainContent");
+
+        // Clear content except button container
+        const buttonContainer = mainContent.querySelector(":scope > div:last-child");
+        while (mainContent.firstChild && mainContent.firstChild !== buttonContainer) {
+          mainContent.removeChild(mainContent.firstChild);
+        }
+
+        const selectedEmployeeContainer = document.createElement("div");
+        selectedEmployeeContainer.className = "mb-10 flex justify-center";
+
+        const googleCard = createEmployeeCard(googleEmployee, true);
+        googleCard.classList.add("w-full", "max-w-xs", "mx-auto");
+        selectedEmployeeContainer.appendChild(googleCard);
+
+        const qtSection = document.createElement("div");
+        qtSection.innerHTML = `
+                <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Manage Connections with QT Team</h3>
+                <div class="swiper">
+                    <div class="swiper-wrapper" id="qtGrid"></div>
+                </div>`;
+
+        // Insert the new content before the button container
+        mainContent.insertBefore(selectedEmployeeContainer, buttonContainer);
+        mainContent.insertBefore(qtSection, buttonContainer);
+
+        const qtGrid = document.getElementById("qtGrid");
+        coreTeam.forEach((qtMember) => {
+          const slide = document.createElement("div");
+          slide.className = "swiper-slide";
+          slide.appendChild(createEmployeeCard(qtMember, false));
+          qtGrid.appendChild(slide);
+        });
+
+        if (swiperInstance) swiperInstance.destroy();
+
+        swiperInstance = new Swiper(".swiper", {
+          loop: true,
+          spaceBetween: 16,
+          slidesPerView: 1,
+          centeredSlides: true,
+          breakpoints: {
+            500: { slidesPerView: 2, centeredSlides: false },
+            640: { slidesPerView: 3, centeredSlides: false },
+            1024: { slidesPerView: 5, centeredSlides: false },
+          },
+        });
+
+        // Add event listeners for strength buttons
+        mainContent.querySelectorAll(".strength-btn").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            const qtLdap = e.currentTarget.dataset.ldap;
+            const strength = e.currentTarget.dataset.strength;
+            const card = e.currentTarget.closest(".unified-card");
+
+            pendingChanges[qtLdap] = strength;
+
+            e.currentTarget.parentElement.querySelectorAll(".strength-btn").forEach((b) => {
+              b.classList.remove("active-weak", "active-medium", "active-strong", "pending-weak", "pending-medium", "pending-strong");
+            });
+            e.currentTarget.classList.add(`active-${strength}`, `pending-${strength}`);
+
+            document.getElementById("saveChangesBtn").classList.remove("hidden");
+
+            card.classList.remove("glow-weak", "glow-medium", "glow-strong");
+            void card.offsetWidth;
+            card.classList.add(`glow-${strength}`);
+          });
+        });
+      }
+
+      function setupSearch() {
+        const searchInput = document.getElementById("searchInput");
+        const suggestions = document.getElementById("suggestions");
+        const suggestionsList = document.getElementById("suggestionsList");
+
+        searchInput.addEventListener("input", async (e) => {
+          const searchTerm = e.target.value.toLowerCase();
+          if (searchTerm.length < 2) {
+            suggestions.classList.add("hidden");
+            return;
+          }
+
+          const filteredEmployees = await searchGoogleEmployees(searchTerm);
+
+          suggestionsList.innerHTML = "";
+          if (filteredEmployees.length > 0) {
+            filteredEmployees.forEach((employee) => {
+              const item = document.createElement("button");
+              item.className = "suggestion-item";
+              item.innerHTML = `
+                            <img src="${employee.avatar}" alt="${employee.name}">
+                            <div class="flex-1 min-w-0 text-left">
+                                <div class="font-medium truncate">${employee.name}</div>
+                                <div class="text-sm text-gray-500 muted">${employee.designation}</div>
+                                <div class="text-sm text-gray-500 truncate font-mono">${employee.ldap}</div>
+                            </div>`;
+              item.addEventListener("click", () => {
+                searchInput.value = "";
+                suggestions.classList.add("hidden");
+                renderConnectionInterface(employee);
+              });
+              suggestionsList.appendChild(item);
+            });
+            suggestions.classList.remove("hidden");
+          } else {
+            suggestions.classList.add("hidden");
+          }
+        });
+
+        document.addEventListener("click", (e) => {
+          if (!e.target.closest(".relative")) {
+            suggestions.classList.add("hidden");
+          }
+        });
+      }
+
+      function setupSaveButton() {
+        const saveBtn = document.getElementById("saveChangesBtn");
+        saveBtn.addEventListener("click", async () => {
+          const changesCount = Object.keys(pendingChanges).length;
+          if (changesCount === 0) return;
+
+          const result = await saveConnections(selectedGoogleEmployee.ldap, pendingChanges);
+          
+          if (result.success) {
+            Swal.fire({
+              icon: "success",
+              title: "Connections Saved!",
+              text: `Successfully updated ${result.updated_count} connection(s).`,
+              timer: 2000,
+              showConfirmButton: false,
+            });
+
+            // Refresh QT team data and re-render
+            await fetchQTTeam();
+            renderConnectionInterface(selectedGoogleEmployee);
+          } else {
+            Swal.fire({
+              icon: "error",
+              title: "Error Saving Connections",
+              text: result.error || "An error occurred while saving connections.",
+            });
+          }
+        });
+      }
+
+      async function init() {
+        try {
+          await Promise.all([fetchGoogleEmployees(), fetchQTTeam()]);
+          setupSearch();
+          setupSaveButton();
+          lucide.createIcons();
+        } catch (error) {
+          console.error('Error initializing application:', error);
+          Swal.fire({
+            icon: "error",
+            title: "Initialization Error",
+            text: "Failed to load application data. Please refresh the page.",
+          });
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", init);
+    </script>
+  </body>
+</html>
