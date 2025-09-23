@@ -11,7 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-      /* Inline CSS to ensure styles load */
+      /* Copy exact styles from search.html to ensure consistency */
       .input {
         display: flex;
         height: 2.25rem;
@@ -185,175 +185,270 @@
       let selectedGoogleEmployee = null;
       let pendingChanges = {};
 
-      // Initialize with hardcoded data that always works
-      function initializeData() {
-        // Hardcoded Google employees
-        googleEmployees = [
-          {
-            ldap: 'ashwink',
-            name: 'Ashwin Kumar',
-            email: 'ashwink@google.com',
-            department: 'Engineering',
-            designation: 'Senior Engineering Manager',
-            company: 'GOOGLE',
-            organisation: 'Google',
-            connections: []
-          },
-          {
-            ldap: 'epersitz',
-            name: 'Ehud Persitz',
-            email: 'epersitz@google.com',
-            department: 'SLS',
-            designation: 'Sr. Program Manager, SLS',
-            company: 'GOOGLE',
-            organisation: 'Google',
-            connections: []
-          },
-          {
-            ldap: 'john.smith',
-            name: 'John Smith',
-            email: 'john.smith@google.com',
-            department: 'Engineering',
-            designation: 'Software Engineer',
-            company: 'GOOGLE',
-            organisation: 'Google',
-            connections: []
-          }
-        ];
-
-        // Hardcoded QT team members
-        coreTeam = [
-          {
-            ldap: 'lihi.segev',
-            name: 'Lihi Segev',
-            email: 'lihi.segev@Qualitest.com',
-            department: 'Engineering',
-            designation: 'Engineering Manager',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: []
-          },
-          {
-            ldap: 'abhijeet.bagade',
-            name: 'Abhijeet Bagade',
-            email: 'abhijeet.bagade@Qualitest.com',
-            department: 'Product',
-            designation: 'Product Manager',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: []
-          },
-          {
-            ldap: 'omri.nissim',
-            name: 'Omri Nissim',
-            email: 'omri.nissim@Qualitest.com',
-            department: 'Engineering',
-            designation: 'Senior Developer',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: []
-          },
-          {
-            ldap: 'kobi.kol',
-            name: 'Kobi Kol',
-            email: 'kobi.kol@Qualitest.com',
-            department: 'Operations',
-            designation: 'Operations Manager',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: []
-          },
-          {
-            ldap: 'jillian.orrico',
-            name: 'Jillian OrRico',
-            email: 'jillian.orrico@Qualitest.com',
-            department: 'Sales',
-            designation: 'Sales Director',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: []
-          },
-          {
-            ldap: 'michael.bush',
-            name: 'Michael Bush',
-            email: 'michael.bush@Qualitest.com',
-            department: 'Marketing',
-            designation: 'Marketing Manager',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: []
-          },
-          {
-            ldap: 'mayank.arya',
-            name: 'Mayank Arya',
-            email: 'mayank.arya@Qualitest.com',
-            department: 'Engineering',
-            designation: 'Technical Lead',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: []
-          }
-        ];
-      }
-
-      // API Functions (with fallback to hardcoded data)
-      async function fetchGoogleEmployees() {
+      // Use EXACT same data loading pattern as search.html
+      async function loadFlaskData() {
         try {
-          const response = await fetch('/api/google-employees');
-          if (response.ok) {
-            const apiData = await response.json();
-            if (apiData && apiData.length > 0) {
-              googleEmployees = apiData;
-              console.log('Loaded Google employees from API:', googleEmployees.length);
-              return;
+          console.log('🔄 Loading data from Flask API...');
+          
+          // Load Google employees - EXACT same as search.html
+          const googleResponse = await fetch('/api/google-employees');
+          const data = await googleResponse.json();
+          googleEmployees = data.map(emp => ({
+            ldap: emp.ldap,
+            email: emp.email || emp.ldap + '@google.com',
+            avatar: emp.avatar || `https://i.pravatar.cc/150?u=${emp.ldap}`,
+            name: emp.name,
+            company: emp.company || "GOOGLE",
+            designation: emp.designation,
+            organisation: emp.organisation || emp.department || "Google",
+            manager: emp.manager || null,
+            connections: emp.connections || []
+          }));
+
+          // Load QT team - with your exact QT team structure
+          const qtResponse = await fetch('/api/qt-team');
+          const qtData = await qtResponse.json();
+          
+          // Always use your hardcoded QT team to ensure consistency
+          coreTeam = [
+            {
+              ldap: 'lihi.segev',
+              name: 'Lihi Segev',
+              email: 'lihi.segev@Qualitest.com',
+              department: 'Engineering',
+              designation: 'Engineering Manager',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: [],
+              avatar: "https://i.pravatar.cc/150?u=lihi.segev"
+            },
+            {
+              ldap: 'abhijeet.bagade',
+              name: 'Abhijeet Bagade',
+              email: 'abhijeet.bagade@Qualitest.com',
+              department: 'Product',
+              designation: 'Product Manager',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: [],
+              avatar: "https://i.pravatar.cc/150?u=abhijeet.bagade"
+            },
+            {
+              ldap: 'omri.nissim',
+              name: 'Omri Nissim',
+              email: 'omri.nissim@Qualitest.com',
+              department: 'Engineering',
+              designation: 'Senior Developer',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: [],
+              avatar: "https://i.pravatar.cc/150?u=omri.nissim"
+            },
+            {
+              ldap: 'kobi.kol',
+              name: 'Kobi Kol',
+              email: 'kobi.kol@Qualitest.com',
+              department: 'Operations',
+              designation: 'Operations Manager',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: [],
+              avatar: "https://i.pravatar.cc/150?u=kobi.kol"
+            },
+            {
+              ldap: 'jillian.orrico',
+              name: 'Jillian OrRico',
+              email: 'jillian.orrico@Qualitest.com',
+              department: 'Sales',
+              designation: 'Sales Director',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: [],
+              avatar: "https://i.pravatar.cc/150?u=jillian.orrico"
+            },
+            {
+              ldap: 'michael.bush',
+              name: 'Michael Bush',
+              email: 'michael.bush@Qualitest.com',
+              department: 'Marketing',
+              designation: 'Marketing Manager',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: [],
+              avatar: "https://i.pravatar.cc/150?u=michael.bush"
+            },
+            {
+              ldap: 'mayank.arya',
+              name: 'Mayank Arya',
+              email: 'mayank.arya@Qualitest.com',
+              department: 'Engineering',
+              designation: 'Technical Lead',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: [],
+              avatar: "https://i.pravatar.cc/150?u=mayank.arya"
             }
-          }
+          ];
+          
+          // If API returned valid data and we want to merge it, we can do so here
+          // But for now, we'll use the hardcoded data to ensure consistency
+          
+          console.log('✅ API data loaded successfully');
+          console.log('📊 Google employees loaded:', googleEmployees.length);
+          console.log('📊 QT team loaded:', coreTeam.length);
+          
         } catch (error) {
-          console.log('API not available, using hardcoded data');
+          console.log('⚠️ API not available, using fallback data');
+          console.error('API Error:', error);
+          
+          // Use EXACT same fallback data as search.html
+          googleEmployees = [
+            {
+              ldap: "ashwink",
+              email: "ashwink@google.com",
+              avatar: "https://i.pravatar.cc/150?u=ashwink",
+              name: "Ashwin Kumar",
+              company: "GOOGLE",
+              designation: "Senior Engineering Manager",
+              organisation: "Google",
+              manager: null,
+              connections: []
+            },
+            {
+              ldap: "epersitz",
+              email: "epersitz@google.com",
+              avatar: "https://i.pravatar.cc/150?u=epersitz",
+              name: "Ehud Persitz",
+              company: "GOOGLE", 
+              designation: "Sr. Program Manager, SLS",
+              organisation: "Google",
+              manager: null,
+              connections: []
+            },
+            {
+              ldap: "hackerj",
+              email: "hackerj@google.com", 
+              avatar: "https://i.pravatar.cc/150?u=hackerj",
+              name: "Hacker",
+              company: "GOOGLE",
+              designation: "Analyst",
+              organisation: "Google Engineering",
+              manager: "ashwink@google.com",
+              connections: []
+            }
+          ];
+
+          // Use EXACT same QT team as your working declare.html
+          coreTeam = [
+            {
+              ldap: 'lihi.segev',
+              name: 'Lihi Segev',
+              email: 'lihi.segev@Qualitest.com',
+              department: 'Engineering',
+              designation: 'Engineering Manager',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'abhijeet.bagade',
+              name: 'Abhijeet Bagade',
+              email: 'abhijeet.bagade@Qualitest.com',
+              department: 'Product',
+              designation: 'Product Manager',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'omri.nissim',
+              name: 'Omri Nissim',
+              email: 'omri.nissim@Qualitest.com',
+              department: 'Engineering',
+              designation: 'Senior Developer',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'kobi.kol',
+              name: 'Kobi Kol',
+              email: 'kobi.kol@Qualitest.com',
+              department: 'Operations',
+              designation: 'Operations Manager',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'jillian.orrico',
+              name: 'Jillian OrRico',
+              email: 'jillian.orrico@Qualitest.com',
+              department: 'Sales',
+              designation: 'Sales Director',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'michael.bush',
+              name: 'Michael Bush',
+              email: 'michael.bush@Qualitest.com',
+              department: 'Marketing',
+              designation: 'Marketing Manager',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'mayank.arya',
+              name: 'Mayank Arya',
+              email: 'mayank.arya@Qualitest.com',
+              department: 'Engineering',
+              designation: 'Technical Lead',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            }
+          ];
+
+          console.log('🔧 Using fallback data');
         }
-        console.log('Using hardcoded Google employees');
+
+        console.log('📋 Final loaded data summary:');
+        console.log(`- Google employees: ${googleEmployees.length}`);
+        console.log(`- QT team: ${coreTeam.length}`);
       }
 
-      async function fetchQTTeam() {
-        try {
-          const response = await fetch('/api/qt-team');
-          if (response.ok) {
-            const apiData = await response.json();
-            if (apiData && apiData.length > 0) {
-              coreTeam = apiData;
-              console.log('Loaded QT team from API:', coreTeam.length);
-              return;
-            }
-          }
-        } catch (error) {
-          console.log('API not available, using hardcoded data');
-        }
-        console.log('Using hardcoded QT team');
-      }
-
+      // Use EXACT same search pattern as search.html
       async function searchGoogleEmployees(query) {
+        console.log(`Searching for: "${query}"`);
+        
         try {
           const response = await fetch(`/api/search-google-employees?q=${encodeURIComponent(query)}`);
           if (response.ok) {
             const results = await response.json();
+            console.log(`API search found ${results.length} results`);
             if (results && results.length > 0) {
               return results;
             }
           }
         } catch (error) {
-          console.log('Search API not available, using local search');
+          console.log('API search failed, using local search:', error);
         }
         
-        // Local search fallback
+        // Local search fallback - EXACT same as search.html
         const query_lower = query.toLowerCase();
-        return googleEmployees.filter(emp => 
+        const results = googleEmployees.filter(emp => 
           emp.name.toLowerCase().includes(query_lower) ||
           emp.email.toLowerCase().includes(query_lower) ||
           emp.ldap.toLowerCase().includes(query_lower)
         );
+        console.log(`Local search found ${results.length} results`);
+        return results;
       }
 
-      // UI Functions
+      // Employee card creation
       function createEmployeeCard(employee, isGoogleEmployeeCard = false) {
         const card = document.createElement("div");
 
@@ -562,11 +657,10 @@
           saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin w-5 h-5"></i> Saving to Google Sheets...';
 
           try {
-            // Enhanced payload for Google Sheets integration
             const payload = {
               googleLdap: selectedGoogleEmployee.ldap,
               connections: pendingChanges,
-              declaredBy: 'Qonnect User', // You can enhance this to collect user info
+              declaredBy: 'Qonnect User',
               timestamp: new Date().toISOString()
             };
 
@@ -582,7 +676,6 @@
             console.log('Save result:', result);
 
             if (response.ok && result.success) {
-              // Show success message with Google Sheets info
               const message = result.written_to_sheets 
                 ? `Successfully saved ${result.updated_count} connection(s) to Google Sheets!`
                 : `Saved ${result.updated_count} connection(s) locally. Google Sheets: ${result.sheets_error || 'unavailable'}`;
@@ -608,7 +701,6 @@
                 cancelButtonText: 'Continue'
               }).then((swalResult) => {
                 if (swalResult.isConfirmed && result.written_to_sheets && result.sheets_url) {
-                  // Open Google Sheets in new tab
                   window.open(result.sheets_url, '_blank');
                 }
               });
@@ -638,19 +730,99 @@
         });
       }
 
+      // Enhanced initialization - ensures QT team is always loaded
       async function init() {
-        // Initialize with hardcoded data first
-        initializeData();
+        console.log('🚀 Initializing Declare page...');
         
-        // Try to fetch data from API (will override hardcoded if successful)
-        await Promise.all([fetchGoogleEmployees(), fetchQTTeam()]);
+        // Always initialize with your hardcoded QT team first
+        coreTeam = [
+          {
+            ldap: 'lihi.segev',
+            name: 'Lihi Segev',
+            email: 'lihi.segev@Qualitest.com',
+            department: 'Engineering',
+            designation: 'Engineering Manager',
+            company: 'Qualitest',
+            organisation: 'Qualitest',
+            connections: [],
+            avatar: "https://i.pravatar.cc/150?u=lihi.segev"
+          },
+          {
+            ldap: 'abhijeet.bagade',
+            name: 'Abhijeet Bagade',
+            email: 'abhijeet.bagade@Qualitest.com',
+            department: 'Product',
+            designation: 'Product Manager',
+            company: 'Qualitest',
+            organisation: 'Qualitest',
+            connections: [],
+            avatar: "https://i.pravatar.cc/150?u=abhijeet.bagade"
+          },
+          {
+            ldap: 'omri.nissim',
+            name: 'Omri Nissim',
+            email: 'omri.nissim@Qualitest.com',
+            department: 'Engineering',
+            designation: 'Senior Developer',
+            company: 'Qualitest',
+            organisation: 'Qualitest',
+            connections: [],
+            avatar: "https://i.pravatar.cc/150?u=omri.nissim"
+          },
+          {
+            ldap: 'kobi.kol',
+            name: 'Kobi Kol',
+            email: 'kobi.kol@Qualitest.com',
+            department: 'Operations',
+            designation: 'Operations Manager',
+            company: 'Qualitest',
+            organisation: 'Qualitest',
+            connections: [],
+            avatar: "https://i.pravatar.cc/150?u=kobi.kol"
+          },
+          {
+            ldap: 'jillian.orrico',
+            name: 'Jillian OrRico',
+            email: 'jillian.orrico@Qualitest.com',
+            department: 'Sales',
+            designation: 'Sales Director',
+            company: 'Qualitest',
+            organisation: 'Qualitest',
+            connections: [],
+            avatar: "https://i.pravatar.cc/150?u=jillian.orrico"
+          },
+          {
+            ldap: 'michael.bush',
+            name: 'Michael Bush',
+            email: 'michael.bush@Qualitest.com',
+            department: 'Marketing',
+            designation: 'Marketing Manager',
+            company: 'Qualitest',
+            organisation: 'Qualitest',
+            connections: [],
+            avatar: "https://i.pravatar.cc/150?u=michael.bush"
+          },
+          {
+            ldap: 'mayank.arya',
+            name: 'Mayank Arya',
+            email: 'mayank.arya@Qualitest.com',
+            department: 'Engineering',
+            designation: 'Technical Lead',
+            company: 'Qualitest',
+            organisation: 'Qualitest',
+            connections: [],
+            avatar: "https://i.pravatar.cc/150?u=mayank.arya"
+          }
+        ];
         
-        // Setup functionality
+        // Now load data from Flask API
+        await loadFlaskData();
         setupSearch();
         setupSaveButton();
         lucide.createIcons();
         
         console.log('Initialized with:', googleEmployees.length, 'Google employees,', coreTeam.length, 'QT team members');
+        console.log('QT Team:', coreTeam.map(qt => qt.name));
       }
 
       // Initialize when DOM is ready
