@@ -5,627 +5,455 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Qonnect - Search Connection</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+      <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
-    <style>
-      .input {
-        display: flex;
-        height: 2.25rem;
-        width: 100%;
-        border: 1px solid #d1d5db;
-        background-color: #ffffff;
-        padding: 0.5rem 0.75rem;
-        font-size: 0.875rem;
-        border-radius: 0.375rem;
-        transition: all 0.2s;
-      }
-      .input:focus {
-        outline: 2px solid #4f46e5;
-        outline-offset: 2px;
-        border-color: #4f46e5;
-      }
-      .suggestions {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background-color: white;
-        border: 1px solid #d1d5db;
-        margin-top: 0.25rem;
-        z-index: 50;
-        max-height: 20rem;
-        overflow-y: auto;
-        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-        border-radius: 0.375rem;
-      }
-      .suggestion-item {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        width: 100%;
-        text-align: left;
-        padding: 0.75rem;
-        cursor: pointer;
-        background-color: transparent;
-        border: none;
-        color: #374151;
-      }
-      .suggestion-item:hover {
-        background-color: #f3f4f6;
-      }
-      .hidden {
-        display: none !important;
-      }
-      .employee-card {
-        background-color: white;
-        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-        transition: all 0.3s ease-in-out;
-        display: flex;
-        flex-direction: column;
-        padding: 1rem;
-        border-radius: 0.75rem;
-        border: 2px solid #e5e7eb;
-        min-width: 200px;
-      }
-      .employee-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 4px 8px -1px rgb(0 0 0 / 0.1);
-      }
-      .google-border {
-        border: 3px solid transparent;
-        border-image-slice: 1;
-        border-image-source: linear-gradient(90deg, #4285f4, #db4437, #f4b400, #0f9d58);
-      }
-      .qt-border {
-        border: 3px solid #5748c3;
-      }
-      .manager-border {
-        border: 3px solid #059669;
-      }
-      .bg-primary {
-        background-color: #2a2559;
-      }
-      .text-primary {
-        color: #2a2559;
-      }
-      .hierarchy-line {
-        width: 2px;
-        background-color: #cbd5e1;
-      }
-      .hierarchy-connector {
-        border-top: 2px solid #cbd5e1;
-        border-left: 2px solid #cbd5e1;
-      }
-    </style>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="static/css/style.css">
+
   </head>
 <body class="bg-gray-50 text-gray-900">
     <nav class="w-full p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
         <div class="container mx-auto flex items-center justify-between">
-            <a href="/" class="flex items-center gap-5">
-                <i class="fas fa-project-diagram text-2xl text-white"></i>
+            <a href="index.html" class="flex items-center gap-5">
+                <i class="fas fa-project-diagram text-2xl text-primary text-white"></i>
                 <h1 class="text-2xl font-bold text-white">Qonnect</h1>
             </a>
         </div>
     </nav>
 
+
     <div class="max-w-7xl p-8 mx-auto">
       <div class="text-center mb-8">
         <h1 class="text-2xl font-bold">Organization Hierarchy Chart</h1>
-        <p class="text-gray-600 mt-2">Search for employees by LDAP to find their organizational hierarchy and connections.</p>
+        <p class="muted mt-2">Search for Google employees to find the shortest connection path from the QT team.</p>
       </div>
 
       <div class="flex justify-center mb-8">
         <div class="relative w-full max-w-md">
           <div class="relative">
             <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"></i>
-            <input type="text" id="searchInput" placeholder="Enter LDAP (e.g., ashwink, john.smith)..." class="input pl-10" />
+            <input type="text" id="searchInput" placeholder="Search Google employees..." class="input pl-10" />
           </div>
           <div id="suggestions" class="suggestions hidden"></div>
         </div>
       </div>
 
       <div id="mainContent">
-        <div class="text-center text-gray-500 py-16">
-          <p>Enter an employee's LDAP to view their organizational hierarchy.</p>
+        <div class="text-center muted py-16">
+          <p>Search and select a Google employee to view their hierarchy and connections.</p>
         </div>
       </div>
     </div>
 
     <script>
-      // Global State
-      let allEmployees = [];
-      let selectedEmployee = null;
-      let qtTeamEmails = [
-        'lihi.segev@olenick.com',
-        'abhijeet.bagade@olenick.com',
-        'omri.nissim@olenick.com',
-        'kobi.kol@olenick.com',
-        'jillian.orrico@olenick.com',
-        'michael.bush@olenick.com',
-        'mayank.arya@olenick.com'
-      ];
+      // Data
+      let googleEmployees = [];
+      let coreTeam = [];
 
-      // Initialize with sample data that matches your Google Sheets structure
-      function initializeEmployeeData() {
-        allEmployees = [
-          // Manager level
-          {
-            name: 'Sarah Wilson',
-            position: 'VP Engineering',
-            department: 'Engineering', 
-            country: 'USA',
-            ldap: 'sarah.wilson',
-            email: 'sarah.wilson@google.com',
-            managerEmail: '',
-            momaPhotoUrl: ''
-          },
-          // Direct reports to Sarah
-          {
-            name: 'Ashwin Kumar',
-            position: 'Senior Engineering Manager',
-            department: 'Engineering',
-            country: 'India', 
-            ldap: 'ashwink',
-            email: 'ashwink@google.com',
-            managerEmail: 'sarah.wilson@google.com',
-            momaPhotoUrl: ''
-          },
-          {
-            name: 'Michael Chen',
-            position: 'Engineering Manager',
-            department: 'Engineering',
-            country: 'USA',
-            ldap: 'michael.chen',
-            email: 'michael.chen@google.com', 
-            managerEmail: 'sarah.wilson@google.com',
-            momaPhotoUrl: ''
-          },
-          // Direct reports to Ashwin
-          {
-            name: 'Priya Sharma',
-            position: 'Software Engineer',
-            department: 'Engineering',
-            country: 'India',
-            ldap: 'priya.sharma',
-            email: 'priya.sharma@google.com',
-            managerEmail: 'ashwink@google.com',
-            momaPhotoUrl: ''
-          },
-          {
-            name: 'Rahul Patel',
-            position: 'Software Engineer', 
-            department: 'Engineering',
-            country: 'India',
-            ldap: 'rahul.patel',
-            email: 'rahul.patel@google.com',
-            managerEmail: 'ashwink@google.com',
-            momaPhotoUrl: ''
-          },
-          {
-            name: 'David Kim',
-            position: 'Senior Software Engineer',
-            department: 'Engineering',
-            country: 'South Korea',
-            ldap: 'david.kim', 
-            email: 'david.kim@google.com',
-            managerEmail: 'ashwink@google.com',
-            momaPhotoUrl: ''
-          },
-          // Direct reports to Michael
-          {
-            name: 'Emma Johnson',
-            position: 'Software Engineer',
-            department: 'Engineering',
-            country: 'USA',
-            ldap: 'emma.johnson',
-            email: 'emma.johnson@google.com',
-            managerEmail: 'michael.chen@google.com',
-            momaPhotoUrl: ''
-          },
-          {
-            name: 'Alex Rodriguez',
-            position: 'Software Engineer',
-            department: 'Engineering', 
-            country: 'Spain',
-            ldap: 'alex.rodriguez',
-            email: 'alex.rodriguez@google.com',
-            managerEmail: 'michael.chen@google.com',
-            momaPhotoUrl: ''
-          },
-          // Other departments
-          {
-            name: 'Ehud Persitz',
-            position: 'Sr. Program Manager, SLS',
-            department: 'SLS',
-            country: 'Israel',
-            ldap: 'epersitz',
-            email: 'epersitz@google.com',
-            managerEmail: '',
-            momaPhotoUrl: ''
-          }
-        ];
-      }
+      // Load data from Flask API
+      async function loadFlaskData() {
+        const googleResponse = await fetch('/api/google-employees');
+        const data = await googleResponse.json();
+        googleEmployees = data.map(emp => ({
+          ldap: emp.ldap, // Keep original LDAP format from sheets (e.g., "ashwink")
+          email: emp.ldap + '@google.com', // Create email separately
+          avatar: emp.avatar || '', // Use MOMA Photo URL from backend
+          name: emp.name,
+          company: emp.company || "GOOGLE",
+          designation: emp.designation,
+          organisation: emp.organisation || emp.department,
+          manager: emp.manager || null,
+        }));
 
-      // API Functions
-      async function fetchEmployeeData() {
-        try {
-          // Use the existing Flask endpoints
-          const [googleResponse, qtResponse] = await Promise.all([
-            fetch('/api/google-employees'),
-            fetch('/api/qt-team')
-          ]);
-          
-          let employees = [];
-          
-          if (googleResponse.ok) {
-            const googleEmployees = await googleResponse.json();
-            employees = employees.concat(googleEmployees);
-          }
-          
-          if (qtResponse.ok) {
-            const qtTeam = await qtResponse.json();
-            employees = employees.concat(qtTeam);
-          }
-          
-          if (employees.length > 0) {
-            // Convert to our expected format
-            allEmployees = employees.map(emp => ({
-              name: emp.name,
-              position: emp.designation,
-              department: emp.department,
-              country: emp.location || 'Unknown',
-              ldap: emp.ldap,
-              email: emp.email,
-              managerEmail: emp.manager || '',
-              momaPhotoUrl: emp.avatar || ''
-            }));
-            console.log('Loaded employees from API:', allEmployees.length);
-            return;
-          }
-        } catch (error) {
-          console.log('API not available, using sample data');
-        }
-      }
-
-      async function searchEmployees(query) {
-        try {
-          // Use the existing search endpoint
-          const response = await fetch(`/api/search-employees?q=${encodeURIComponent(query)}`);
-          if (response.ok) {
-            const results = await response.json();
-            if (results && results.length > 0) {
-              // Convert to our expected format
-              return results.map(emp => ({
-                name: emp.name,
-                position: emp.designation,
-                department: emp.department,
-                country: emp.location || 'Unknown',
-                ldap: emp.ldap,
-                email: emp.email,
-                managerEmail: emp.manager || '',
-                momaPhotoUrl: emp.avatar || ''
-              }));
-            }
-          }
-        } catch (error) {
-          console.log('Search API not available, using local search');
-        }
+        const qtResponse = await fetch('/api/qt-team');
+        const qtData = await qtResponse.json();
+        coreTeam = qtData.map(emp => ({
+          ldap: emp.ldap, // Keep original LDAP format
+          email: emp.ldap + '@olenick.com', // Create email separately
+          avatar: emp.avatar || '', // Use MOMA Photo URL from backend
+          name: emp.name,
+          company: emp.company || "QT",
+          designation: emp.designation,
+          organisation: emp.organisation || emp.department,
+          connections: emp.connections || [],
+        }));
         
-        // Local search fallback
-        const query_lower = query.toLowerCase();
-        return allEmployees.filter(emp => 
-          emp.ldap.toLowerCase().includes(query_lower) ||
-          emp.name.toLowerCase().includes(query_lower) ||
-          emp.email.toLowerCase().includes(query_lower)
+        console.log('Loaded employees:', googleEmployees.slice(0, 3)); // Debug first 3 employees
+      }
+
+      const connectionPaths = {};
+
+      // Global state
+      let selectedEmployee = null;
+      let expandedConnection = null;
+      let employeeMap = new Map();
+
+      function updateEmployeeMap() {
+        employeeMap = new Map(googleEmployees.map((e) => [e.ldap, e]));
+        coreTeam.forEach((e) => {
+          employeeMap.set(e.ldap, e);
+        });
+      }
+
+      function createEmployeeCard(employee, className = "") {
+        if (!employee) return document.createElement("div");
+        const card = document.createElement("div");
+        const borderClass = employee.company === "GOOGLE" ? "google-border" : "qt-border";
+        card.className = `unified-card ${borderClass} ${className}`;
+        
+        // Use MOMA Photo URL if available, otherwise use placeholder with initials
+        const avatarImg = employee.avatar && employee.avatar.trim() !== '' 
+          ? `<img src="${employee.avatar}" alt="${employee.name}" class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+             <div class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow bg-gradient-to-br from-blue-100 to-purple-100 items-center justify-center hidden">
+               <span class="text-lg font-bold text-gray-600">${employee.name.charAt(0)}</span>
+             </div>`
+          : `<div class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+               <span class="text-lg font-bold text-gray-600">${employee.name.charAt(0)}</span>
+             </div>`;
+
+        card.innerHTML = `
+                <div class="flex-1 flex flex-col items-center text-center justify-center">
+                    ${avatarImg}
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">${employee.organisation || employee.company}</p>
+                    <h4 class="font-bold text-sm text-gray-800">${employee.name}</h4>
+                    <p class="text-xs text-gray-500">${employee.designation}</p>
+                    <p class="text-[10px] text-gray-400 mt-1 font-mono">${employee.email || employee.ldap}</p>
+                </div>
+            `;
+        return card;
+      }
+
+      function createConnectionTooltip(path, onExpand) {
+        const tooltip = document.createElement("div");
+        tooltip.className = "tooltip flex justify-center";
+        const pathLength = path.length;
+        const pathNames = path.map((ldap) => employeeMap.get(ldap)?.name).filter(Boolean);
+
+        tooltip.innerHTML = `
+                <button class="btn connection-btn">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    <span class="connection-count">${pathLength}</span>
+                </button>
+                <div class="tooltip-content">
+                    <div class="space-y-2">
+                        <p class="text-sm font-semibold">
+                            Shortest Path Found (${pathLength} ${pathLength === 1 ? "step" : "steps"})
+                        </p>
+                        <p class="text-xs muted italic pt-1">
+                            Click to expand full hierarchy path.
+                        </p>
+                    </div>
+                </div>
+            `;
+
+        tooltip.querySelector("button").addEventListener("click", onExpand);
+        return tooltip;
+      }
+
+      // --- HIERARCHY RENDERING LOGIC ---
+
+      async function renderHierarchyChart(employee) {
+        const content = document.createElement("div");
+        content.className = "space-y-0";
+
+        content.innerHTML = `
+                <div class="flex justify-center">${createEmployeeCard(employee).outerHTML}</div>
+                <div class="flex justify-center"><div class="w-px h-8 bg-gray-300"></div></div>
+                <div class="text-center text-sm font-semibold text-gray-600">Employee Hierarchy</div>
+            `;
+
+        // Get manager and reportees from the actual data
+        const manager = findManager(employee);
+        const reportees = findDirectReports(employee);
+        
+        console.log('Manager for', employee.name, ':', manager ? manager.name : 'None');
+        console.log('Direct reports for', employee.name, ':', reportees.length, reportees.map(r => r.name));
+
+        // Show manager if exists
+        if (manager) {
+          const managerSection = document.createElement("div");
+          managerSection.className = "mt-8";
+          managerSection.innerHTML = `
+            <div class="text-center text-sm font-semibold text-gray-600 mb-4">Manager</div>
+            <div class="flex justify-center">
+              ${createEmployeeCard(manager).outerHTML}
+            </div>
+          `;
+          content.appendChild(managerSection);
+        }
+
+        // Show direct reports if any
+        if (reportees.length > 0) {
+          const reportsSection = document.createElement("div");
+          reportsSection.className = "mt-8";
+          reportsSection.innerHTML = `
+            <div class="text-center text-sm font-semibold text-gray-600 mb-4">Direct Reports (${reportees.length})</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 justify-items-center">
+              ${reportees.map(reportee => createEmployeeCard(reportee).outerHTML).join('')}
+            </div>
+          `;
+          content.appendChild(reportsSection);
+        }
+
+        // Try to get QT connections as well
+        try {
+          const connections = await getConnections(employee);
+          if (connections.length > 0) {
+            const qtSection = document.createElement("div");
+            qtSection.className = "mt-8 bg-green-50 border border-green-200 rounded-lg p-4";
+            qtSection.innerHTML = `
+              <div class="text-center text-sm font-semibold text-green-800 mb-4">QT Team Connections</div>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                ${connections.map(conn => `
+                  <div class="bg-white rounded-lg p-3 border border-green-200">
+                    <p class="font-medium text-green-800">Connection: ${conn.qtLdap}</p>
+                    <p class="text-sm text-green-600">Strength: ${conn.connectionStrength || 'Unknown'}</p>
+                    <p class="text-xs text-green-500 mt-1">Path length: ${conn.path ? conn.path.length : 'N/A'}</p>
+                  </div>`).join('')}
+              </div>
+            `;
+            content.appendChild(qtSection);
+          }
+        } catch (error) {
+          console.log('Could not load QT connections:', error);
+        }
+
+        return content;
+      }
+
+      // Helper functions to find manager and reports from loaded data
+      function findManager(employee) {
+        if (!employee.manager) return null;
+        
+        // Find manager by email or LDAP
+        const managerEmail = employee.manager.includes('@') ? employee.manager : employee.manager + '@google.com';
+        const managerLdap = employee.manager.replace('@google.com', '');
+        
+        return googleEmployees.find(emp => 
+          emp.email === managerEmail || 
+          emp.ldap === managerLdap ||
+          (emp.ldap + '@google.com') === managerEmail
         );
       }
 
-      // Hierarchy Functions
-      function findManager(employee) {
-        if (!employee.managerEmail) return null;
-        return allEmployees.find(emp => emp.email === employee.managerEmail);
-      }
-
       function findDirectReports(employee) {
-        return allEmployees.filter(emp => emp.managerEmail === employee.email);
+        // Find all employees who report to this person
+        const employeeEmail = employee.email || (employee.ldap + '@google.com');
+        const employeeLdap = employee.ldap;
+        
+        return googleEmployees.filter(emp => 
+          emp.manager === employeeEmail || 
+          emp.manager === employeeLdap ||
+          emp.manager === (employeeLdap + '@google.com')
+        );
       }
 
-      function buildManagerChain(employee) {
-        const chain = [];
-        let current = employee;
-        
-        while (current) {
-          const manager = findManager(current);
-          if (manager) {
-            chain.push(manager);
-            current = manager;
+      function renderExpandedHierarchy(qtEmployee, path) {
+        const content = document.createElement("div");
+        content.className = "space-y-6";
+
+        content.innerHTML = `
+                <div class="flex justify-center">
+                    <button id="backBtn" class="bg-white border border-gray-300 text-gray-700 text-sm font-semibold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-gray-50">
+                        <i data-lucide="arrow-left" class="w-4 h-4"></i>Back to Connections View
+                    </button>
+                </div>
+                <div class="text-center">
+                    <h2 class="text-xl font-bold">Connection Path</h2>
+                    <p class="muted mt-1">From ${qtEmployee.name} to ${employeeMap.get(path[path.length - 1]).name}</p>
+                </div>
+            `;
+
+        const treeContainer = document.createElement("div");
+        treeContainer.className = "tree-container";
+
+        const pathEmployees = path.map((ldap) => employeeMap.get(ldap));
+        const nodeMap = new Map(path.map((ldap) => [ldap, { employee: employeeMap.get(ldap), children: [] }]));
+        const directConnectionLdap = path[0];
+
+        for (let i = 0; i < pathEmployees.length - 1; i++) {
+          const current = pathEmployees[i];
+          const next = pathEmployees[i + 1];
+
+          if (next.manager === current.ldap) {
+            // Moving down
+            nodeMap.get(current.ldap).children.push(nodeMap.get(next.ldap));
+          } else if (current.manager === next.ldap) {
+            // Moving up
+            nodeMap.get(next.ldap).children.push(nodeMap.get(current.ldap));
+          }
+        }
+
+        let rootNodeInPath = nodeMap.get(path[0]);
+        while (true) {
+          const parentInPath = pathEmployees.find((p) => p.ldap === rootNodeInPath.employee.manager && path.includes(p.ldap));
+          if (parentInPath) {
+            rootNodeInPath = nodeMap.get(parentInPath.ldap);
           } else {
             break;
           }
         }
-        
-        return chain;
-      }
 
-      function findConnectionToQT(employee) {
-        // Check if employee is QT team member
-        if (qtTeamEmails.includes(employee.email)) {
-          return {
-            type: 'direct',
-            qtMember: employee,
-            path: [employee]
-          };
-        }
+        function buildTreeHtml(node) {
+          const nodeEl = document.createElement("div");
+          nodeEl.className = "tree-node";
+          nodeEl.appendChild(createEmployeeCard(node.employee));
 
-        // Check manager chain for QT connections
-        const managerChain = buildManagerChain(employee);
-        for (let i = 0; i < managerChain.length; i++) {
-          const manager = managerChain[i];
-          if (qtTeamEmails.includes(manager.email)) {
-            return {
-              type: 'manager',
-              qtMember: manager,
-              path: [employee, ...managerChain.slice(0, i + 1)]
-            };
+          if (node.children.length > 0) {
+            const childrenEl = document.createElement("div");
+            childrenEl.className = "tree-children";
+            node.children.forEach((child) => {
+              childrenEl.appendChild(buildTreeHtml(child));
+            });
+            nodeEl.appendChild(childrenEl);
           }
-        }
 
-        // Check direct reports for QT connections
-        const directReports = findDirectReports(employee);
-        for (const report of directReports) {
-          if (qtTeamEmails.includes(report.email)) {
-            return {
-              type: 'report',
-              qtMember: report,
-              path: [employee, report]
-            };
+          // MODIFICATION: Add QT card below its direct connection
+          if (node.employee.ldap === directConnectionLdap) {
+            const qtContainer = document.createElement("div");
+            qtContainer.className = "flex flex-col items-center pt-8 relative";
+            qtContainer.innerHTML = `<div class="absolute top-0 w-px h-8 bg-purple-400"></div>`;
+            qtContainer.appendChild(createEmployeeCard(qtEmployee));
+            nodeEl.appendChild(qtContainer);
           }
+
+          return nodeEl;
         }
 
-        return null;
+        treeContainer.appendChild(buildTreeHtml(rootNodeInPath));
+        content.appendChild(treeContainer);
+        content.querySelector("#backBtn").addEventListener("click", () => {
+          expandedConnection = null;
+          showSelectedEmployee();
+        });
+
+        return content;
       }
 
-      // UI Functions
-      function createEmployeeCard(employee, cardType = 'google') {
-        const card = document.createElement("div");
-        
-        let borderClass = 'google-border';
-        if (cardType === 'qt') {
-          borderClass = 'qt-border';
-        } else if (cardType === 'manager') {
-          borderClass = 'manager-border';
+      // --- CORE LOGIC & HELPERS ---
+
+      async function getConnections(employee) {
+        try {
+          // Use the LDAP as-is (e.g., "ashwink") for API call
+          const response = await fetch(`/api/connections/${encodeURIComponent(employee.ldap)}`);
+          if (response.ok) {
+            const connections = await response.json();
+            console.log('Connections for', employee.name, '(LDAP:', employee.ldap, '):', connections);
+            return connections || [];
+          } else {
+            console.log('No connections found for', employee.name, '- API response:', response.status);
+            return [];
+          }
+        } catch (error) {
+          console.error('Failed to get connections for', employee.name, ':', error);
+          return [];
         }
-
-        card.className = `employee-card ${borderClass}`;
-
-        const initials = employee.name.split(' ').map(n => n[0]).join('').substring(0, 2);
-        const isQTMember = qtTeamEmails.includes(employee.email);
-        const orgLabel = isQTMember ? 'QT TEAM' : 'GOOGLE';
-
-        card.innerHTML = `
-          <div class="flex-1 flex flex-col items-center text-center">
-            <div class="w-14 h-14 rounded-full mb-2 border-2 border-gray-300 shadow bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
-              <span class="text-lg font-bold text-gray-600">${initials}</span>
-            </div>
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-primary">${orgLabel}</p>
-            <h4 class="font-bold text-sm text-gray-800">${employee.name}</h4>
-            <p class="text-xs text-gray-500">${employee.position}</p>
-            <p class="text-xs text-gray-400">${employee.department}</p>
-            <p class="text-[10px] text-gray-400 mt-1 font-mono">${employee.ldap}</p>
-            <p class="text-[10px] text-gray-400">${employee.country}</p>
-          </div>`;
-
-        return card;
       }
 
-      function renderHierarchy(employee) {
+      function showExpandedHierarchy(qtEmployee, path) {
+        expandedConnection = { qtEmployee, path };
         const mainContent = document.getElementById("mainContent");
         mainContent.innerHTML = "";
+        mainContent.appendChild(renderExpandedHierarchy(qtEmployee, path));
+        lucide.createIcons();
+      }
 
-        // Build hierarchy data
-        const managerChain = buildManagerChain(employee);
-        const directReports = findDirectReports(employee);
-        const qtConnection = findConnectionToQT(employee);
+      async function showSelectedEmployee() {
+        if (!selectedEmployee) return;
+        const mainContent = document.getElementById("mainContent");
+        
+        // Show loading state
+        mainContent.innerHTML = '<div class="text-center py-16"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div><p class="mt-4 text-gray-500">Loading hierarchy...</p></div>';
 
-        // Create main container
-        const hierarchyContainer = document.createElement("div");
-        hierarchyContainer.className = "space-y-8";
-
-        // Show QT Connection if exists
-        if (qtConnection) {
-          const qtSection = document.createElement("div");
-          qtSection.className = "bg-green-50 border border-green-200 rounded-lg p-4";
-          
-          let connectionText = '';
-          if (qtConnection.type === 'direct') {
-            connectionText = 'This employee is a QT team member';
-          } else if (qtConnection.type === 'manager') {
-            connectionText = `Connected to QT team through manager: ${qtConnection.qtMember.name}`;
+        try {
+          if (expandedConnection) {
+            mainContent.innerHTML = "";
+            mainContent.appendChild(renderExpandedHierarchy(expandedConnection.qtEmployee, expandedConnection.path));
           } else {
-            connectionText = `Connected to QT team through direct report: ${qtConnection.qtMember.name}`;
+            console.log('Loading hierarchy for:', selectedEmployee.name, selectedEmployee.ldap);
+            const hierarchyContent = await renderHierarchyChart(selectedEmployee);
+            mainContent.innerHTML = "";
+            mainContent.appendChild(hierarchyContent);
           }
-
-          qtSection.innerHTML = `
-            <div class="flex items-center gap-2">
-              <i class="fas fa-link text-green-600"></i>
-              <h3 class="font-semibold text-green-800">QT Team Connection Found</h3>
-            </div>
-            <p class="text-green-700 mt-1">${connectionText}</p>
-            <div class="mt-3">
-              <h4 class="text-sm font-medium text-green-800 mb-2">Connection Path:</h4>
-              <div class="flex items-center gap-2 flex-wrap">
-                ${qtConnection.path.map((emp, index) => `
-                  <span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-mono">${emp.ldap}</span>
-                  ${index < qtConnection.path.length - 1 ? '<i class="fas fa-arrow-right text-green-600"></i>' : ''}
-                `).join('')}
-              </div>
-            </div>
-          `;
-          
-          hierarchyContainer.appendChild(qtSection);
+          lucide.createIcons();
+        } catch (error) {
+          console.error('Error showing selected employee:', error);
+          mainContent.innerHTML = `
+            <div class="text-center py-16">
+              <p class="text-red-500">Error loading employee hierarchy</p>
+              <p class="text-sm text-gray-500 mt-2">${error.message}</p>
+            </div>`;
         }
-
-        // Manager Chain Section - FIXED: Show in correct order (top-level manager first)
-        if (managerChain.length > 0) {
-          const managerSection = document.createElement("div");
-          const managerTitle = document.createElement("h3");
-          managerTitle.className = "text-lg font-semibold text-gray-800 mb-4";
-          managerTitle.textContent = "Manager Chain";
-          managerSection.appendChild(managerTitle);
-          
-          const managerChainContainer = document.createElement("div");
-          managerChainContainer.className = "flex flex-col items-center space-y-4";
-          
-          // FIXED: Reverse the manager chain to show top-level manager first
-          const reversedManagerChain = [...managerChain].reverse();
-          
-          // Add manager cards in correct hierarchy order (top to bottom)
-          reversedManagerChain.forEach((manager, index) => {
-            const managerWrapper = document.createElement('div');
-            managerWrapper.className = 'flex flex-col items-center';
-            
-            const managerCard = createEmployeeCard(manager, 'manager');
-            managerWrapper.appendChild(managerCard);
-            
-            if (index < reversedManagerChain.length - 1) {
-              const line = document.createElement('div');
-              line.className = 'hierarchy-line h-8';
-              managerWrapper.appendChild(line);
-            }
-            
-            managerChainContainer.appendChild(managerWrapper);
-          });
-          
-          managerSection.appendChild(managerChainContainer);
-          hierarchyContainer.appendChild(managerSection);
-        }
-
-        // Selected Employee Section
-        const selectedSection = document.createElement("div");
-        const selectedTitle = document.createElement("h3");
-        selectedTitle.className = "text-lg font-semibold text-gray-800 mb-4 text-center";
-        selectedTitle.textContent = "Selected Employee";
-        selectedSection.appendChild(selectedTitle);
-        
-        const selectedEmployeeContainer = document.createElement("div");
-        selectedEmployeeContainer.className = "flex justify-center";
-        
-        const selectedCard = createEmployeeCard(employee, qtTeamEmails.includes(employee.email) ? 'qt' : 'google');
-        selectedEmployeeContainer.appendChild(selectedCard);
-        selectedSection.appendChild(selectedEmployeeContainer);
-        
-        hierarchyContainer.appendChild(selectedSection);
-
-        // Direct Reports Section
-        if (directReports.length > 0) {
-          const reportsSection = document.createElement("div");
-          const reportsTitle = document.createElement("h3");
-          reportsTitle.className = "text-lg font-semibold text-gray-800 mb-4 text-center";
-          reportsTitle.textContent = "Direct Reports";
-          reportsSection.appendChild(reportsTitle);
-          
-          const directReportsContainer = document.createElement("div");
-          directReportsContainer.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 justify-items-center";
-          
-          // Add report cards
-          directReports.forEach((report) => {
-            const reportCard = createEmployeeCard(report, qtTeamEmails.includes(report.email) ? 'qt' : 'google');
-            directReportsContainer.appendChild(reportCard);
-          });
-          
-          reportsSection.appendChild(directReportsContainer);
-          hierarchyContainer.appendChild(reportsSection);
-        }
-
-        // Add everything to main content
-        mainContent.appendChild(hierarchyContainer);
       }
 
       function setupSearch() {
         const searchInput = document.getElementById("searchInput");
         const suggestions = document.getElementById("suggestions");
 
-        searchInput.addEventListener("input", async (e) => {
-          const searchTerm = e.target.value.trim();
+        searchInput.addEventListener("input", (e) => {
+          const searchTerm = e.target.value.toLowerCase();
+          console.log('Searching for:', searchTerm);
           
           if (searchTerm.length === 0) {
             suggestions.classList.add("hidden");
-            suggestions.innerHTML = "";
-            
-            // Reset to initial state
-            selectedEmployee = null;
-            const mainContent = document.getElementById("mainContent");
-            mainContent.innerHTML = `
-              <div class="text-center text-gray-500 py-16">
-                <p>Enter an employee's LDAP to view their organizational hierarchy.</p>
-              </div>`;
-            return;
-          }
-          
-          if (searchTerm.length < 2) {
-            suggestions.classList.add("hidden");
             return;
           }
 
-          const filteredEmployees = await searchEmployees(searchTerm);
+          const filtered = googleEmployees
+            .filter(
+              (emp) =>
+                emp.name.toLowerCase().includes(searchTerm) || 
+                emp.ldap.toLowerCase().includes(searchTerm) || 
+                emp.designation.toLowerCase().includes(searchTerm) ||
+                (emp.email && emp.email.toLowerCase().includes(searchTerm))
+            )
+            .slice(0, 5);
+
+          console.log('Filtered results:', filtered.map(emp => ({ name: emp.name, ldap: emp.ldap })));
 
           suggestions.innerHTML = "";
-          if (filteredEmployees.length > 0) {
-            filteredEmployees.forEach((employee) => {
+          if (filtered.length > 0) {
+            filtered.forEach((employee) => {
               const item = document.createElement("button");
               item.className = "suggestion-item";
-              
-              const initials = employee.name.split(' ').map(n => n[0]).join('').substring(0, 2);
-              const isQTMember = qtTeamEmails.includes(employee.email);
-              
               item.innerHTML = `
-                <div class="w-10 h-10 rounded-full border-2 border-gray-300 bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
-                  <span class="text-sm font-bold text-gray-600">${initials}</span>
-                </div>
-                <div class="flex-1 min-w-0 text-left">
-                  <div class="font-medium truncate">${employee.name}</div>
-                  <div class="text-sm text-gray-500">${employee.position}</div>
-                  <div class="text-sm text-gray-500 truncate font-mono">${employee.ldap}</div>
-                  ${isQTMember ? '<div class="text-xs text-purple-600 font-semibold">QT TEAM</div>' : ''}
-                </div>`;
-              
-              item.addEventListener("click", () => {
-                searchInput.value = employee.ldap;
+                            <img src="${employee.avatar || 'https://via.placeholder.com/32/cccccc/666666?text=' + employee.name.charAt(0)}" alt="${employee.name}" class="w-8 h-8 rounded-full" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-flex';">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 items-center justify-center hidden">
+                              <span class="text-sm font-bold text-gray-600">${employee.name.charAt(0)}</span>
+                            </div>
+                            <div>
+                                <div>${employee.name}</div>
+                                <div class="text-sm muted">${employee.designation}</div>
+                                <div class="text-sm muted">${employee.ldap}</div>
+                            </div>`;
+              item.addEventListener("click", async () => {
+                console.log('Selected employee:', employee.name, 'LDAP:', employee.ldap);
+                searchInput.value = employee.name;
                 suggestions.classList.add("hidden");
                 selectedEmployee = employee;
-                renderHierarchy(employee);
+                expandedConnection = null;
+                await showSelectedEmployee();
               });
-              
               suggestions.appendChild(item);
             });
             suggestions.classList.remove("hidden");
           } else {
+            console.log('No results found for:', searchTerm);
             suggestions.classList.add("hidden");
           }
         });
-
         document.addEventListener("click", (e) => {
-          if (!e.target.closest(".relative")) {
-            suggestions.classList.add("hidden");
-          }
+          if (!e.target.closest(".relative")) suggestions.classList.add("hidden");
         });
       }
 
       async function init() {
-        // Initialize with sample data
-        initializeEmployeeData();
-        
-        // Try to fetch real data from API
-        await fetchEmployeeData();
-        
-        // Setup functionality
+        await loadFlaskData();
+        updateEmployeeMap();
         setupSearch();
         lucide.createIcons();
-        
-        console.log('Search page initialized with:', allEmployees.length, 'employees');
       }
 
-      // Initialize when DOM is ready
       document.addEventListener("DOMContentLoaded", init);
     </script>
   </body>
