@@ -465,7 +465,7 @@
           hierarchyContainer.appendChild(qtSection);
         }
 
-        // Manager Chain Section
+        // Manager Chain Section - FIXED: Show in correct order (top-level manager first)
         if (managerChain.length > 0) {
           const managerSection = document.createElement("div");
           const managerTitle = document.createElement("h3");
@@ -476,15 +476,18 @@
           const managerChainContainer = document.createElement("div");
           managerChainContainer.className = "flex flex-col items-center space-y-4";
           
-          // Add manager cards
-          managerChain.forEach((manager, index) => {
+          // FIXED: Reverse the manager chain to show top-level manager first
+          const reversedManagerChain = [...managerChain].reverse();
+          
+          // Add manager cards in correct hierarchy order (top to bottom)
+          reversedManagerChain.forEach((manager, index) => {
             const managerWrapper = document.createElement('div');
             managerWrapper.className = 'flex flex-col items-center';
             
             const managerCard = createEmployeeCard(manager, 'manager');
             managerWrapper.appendChild(managerCard);
             
-            if (index < managerChain.length - 1) {
+            if (index < reversedManagerChain.length - 1) {
               const line = document.createElement('div');
               line.className = 'hierarchy-line h-8';
               managerWrapper.appendChild(line);
