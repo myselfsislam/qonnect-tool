@@ -215,45 +215,75 @@
 
           coreTeam = [
             {
-              ldap: "lihi.segev",
-              email: "lihi.segev@olenick.com",
-              avatar: "https://i.pravatar.cc/150?u=lihi.segev",
-              name: "Lihi Segev",
-              company: "QT",
-              designation: "Engineering Manager",
-              organisation: "QT Engineering",
-              connections: [],
+              ldap: 'lihis',
+              name: 'Lihi Segev',
+              email: 'lihis@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Executive Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
             },
             {
-              ldap: "abhijeet.bagade",
-              email: "abhijeet.bagade@olenick.com", 
-              avatar: "https://i.pravatar.cc/150?u=abhijeet.bagade",
-              name: "Abhijeet Bagade",
-              company: "QT",
-              designation: "Product Manager",
-              organisation: "QT Product",
-              connections: [],
+              ldap: 'a.bagade',
+              name: 'Abhijeet Bagade',
+              email: 'a.bagade@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
             },
             {
-              ldap: "omri.nissim",
-              email: "omri.nissim@olenick.com",
-              avatar: "https://i.pravatar.cc/150?u=omri.nissim", 
-              name: "Omri Nissim",
-              company: "QT",
-              designation: "Senior Developer", 
-              organisation: "QT Engineering",
-              connections: [],
+              ldap: 'omrinis',
+              name: 'Omri Nissim',
+              email: 'omrinis@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
             },
             {
-              ldap: "john.mitchell",
-              email: "john.mitchell@qt.com",
-              avatar: "https://i.pravatar.cc/150?u=john.mitchell",
-              name: "John Mitchell",
-              company: "QT", 
-              designation: "Global Delivery Manager",
-              organisation: "QT Delivery",
-              connections: [],
+              ldap: 'kobi.kol',
+              name: 'Kobi Kol',
+              email: 'kobi.kol@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Associate Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
             },
+            {
+              ldap: 'jillian.orrico',
+              name: 'Jillian OrRico',
+              email: 'jillian.orrico@qualitestgroup.com',
+              department: 'Sales',
+              designation: 'Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'michael.bush',
+              name: 'Michael Bush',
+              email: 'michael.bush@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Associate Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'mayank.arya',
+              name: 'Mayank Arya',
+              email: 'mayank.arya@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Associate Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            }
           ];
 
           console.log('🔧 Using sample data');
@@ -542,25 +572,25 @@
         }
 
         // Fallback: Demo connections for ashwink for testing
-        if ((employee.ldap === 'ashwink' || employee.name.toLowerCase().includes('ashwin')) && connections.length === 0) {
-          console.log('🔧 Creating demo connections for ashwink (no real connections found)');
-          const qtMembers = coreTeam.length > 0 ? coreTeam : [
-            { ldap: "lihi.segev", name: "Lihi Segev", company: "QT", designation: "Engineering Manager", organisation: "QT Engineering" },
-            { ldap: "abhijeet.bagade", name: "Abhijeet Bagade", company: "QT", designation: "Product Manager", organisation: "QT Product" },
-            { ldap: "omri.nissim", name: "Omri Nissim", company: "QT", designation: "Senior Developer", organisation: "QT Engineering" },
-            { ldap: "john.mitchell", name: "John Mitchell", company: "QT", designation: "Global Delivery Manager", organisation: "QT Delivery" }
-          ];
+        // if ((employee.ldap === 'ashwink' || employee.name.toLowerCase().includes('ashwin')) && connections.length === 0) {
+        //   console.log('🔧 Creating demo connections for ashwink (no real connections found)');
+        //   const qtMembers = coreTeam.length > 0 ? coreTeam : [
+        //     { ldap: "lihi.segev", name: "Lihi Segev", company: "QT", designation: "Engineering Manager", organisation: "QT Engineering" },
+        //     { ldap: "abhijeet.bagade", name: "Abhijeet Bagade", company: "QT", designation: "Product Manager", organisation: "QT Product" },
+        //     { ldap: "omri.nissim", name: "Omri Nissim", company: "QT", designation: "Senior Developer", organisation: "QT Engineering" },
+        //     { ldap: "john.mitchell", name: "John Mitchell", company: "QT", designation: "Global Delivery Manager", organisation: "QT Delivery" }
+        //   ];
 
-          connections = qtMembers.slice(0, 4).map((qtMember, index) => {
-            const strengths = ['strong', 'medium', 'medium', 'weak'];
-            return {
-              qtLdap: qtMember.ldap,
-              qtName: qtMember.name,
-              connectionStrength: strengths[index] || 'medium',
-              path: [qtMember.ldap, employee.ldap]
-            };
-          });
-        }
+        //   connections = qtMembers.slice(0, 4).map((qtMember, index) => {
+        //     const strengths = ['strong', 'medium', 'medium', 'weak'];
+        //     return {
+        //       qtLdap: qtMember.ldap,
+        //       qtName: qtMember.name,
+        //       connectionStrength: strengths[index] || 'medium',
+        //       path: [qtMember.ldap, employee.ldap]
+        //     };
+        //   });
+        // }
 
         const qtSection = document.createElement("div");
         qtSection.className = "mt-8 pt-6 border-t border-gray-200";

@@ -188,23 +188,26 @@ class OptimizedGoogleSheetsConnector:
         # Sample data that matches your actual Google Sheets columns and some real data
         sample_data = [
             ["Name", "Position", "Department", "Country", "LDAP", "MOMA URL", "Manager Email", "MOMA Photo URL"],
+            
             # Real employees from your sheet
             ["Niko Repo", "CSRM Data Center Security Manager", "Operations - CSRM", "Finland", "nrepo", "", "", ""],
             ["Ashwin Kumar", "Senior Engineering Manager", "Engineering", "India", "ashwink", "", "sarah.wilson@google.com", ""],
             ["Chanda", "Support Team - GL", "Engineering - Core ML Infra", "N/A", "cdangi", "", "mutthar@google.com", ""],
             ["Hacker", "Analyst", "Engineering - Core ML Infra", "N/A", "hackerj", "", "ashwink@google.com", ""],
             ["Agave", "Earth Platforms Developer Advocate", "Engineering - Earth Platforms", "N/A", "agv", "", "ryanbateman@google.com", ""],
+            
             # Managers
             ["Sarah Wilson", "VP Engineering", "Engineering", "USA", "sarah.wilson", "", "", ""],
             ["Mutthar", "Manager", "Engineering - Core ML Infra", "N/A", "mutthar", "", "sarah.wilson@google.com", ""],
+            
             # QT Team members
-            ["Lihi Segev", "Engineering Manager", "Engineering", "Israel", "lihi.segev", "", "", ""],
-            ["Abhijeet Bagade", "Product Manager", "Product", "India", "abhijeet.bagade", "", "", ""],
-            ["Omri Nissim", "Senior Developer", "Engineering", "Israel", "omri.nissim", "", "", ""],
-            ["Kobi Kol", "Operations Manager", "Operations", "Israel", "kobi.kol", "", "", ""],
-            ["Jillian OrRico", "Sales Director", "Sales", "USA", "jillian.orrico", "", "", ""],
-            ["Michael Bush", "Marketing Manager", "Marketing", "USA", "michael.bush", "", "", ""],
-            ["Mayank Arya", "Technical Lead", "Engineering", "India", "mayank.arya", "", "", ""],
+            ["Lihi Segev", "Executive Vice President", "Account Management and Delivery", "Israel", "lihis", "", "", ""],
+            ["Abhijeet Bagade", "Vice President", "Account Management and Delivery", "UK", "a.bagade", "", "", ""],
+            ["Omri Nissim", "Vice President", "Account Management and Delivery", "Israel", "omrinis", "", "", ""],
+            ["Kobi Kol", "Associate Vice President", "Account Management and Delivery", "Israel", "kobi.kol", "", "", ""],
+            ["Jillian OrRico", "Vice President", "Sales", "USA", "jillian.orrico", "", "", ""],
+            ["Michael Bush", "Associate Vice President", "Account Management and Delivery", "USA", "michael.bush", "", "", ""],
+            ["Mayank Arya", "Associate Vice President", "Account Management and Delivery", "UK", "mayank.arya", "", "", ""],
         ]
         
         df = pd.DataFrame(sample_data[1:], columns=sample_data[0])
