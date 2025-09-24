@@ -726,7 +726,7 @@
           return {
             ldap: qtLdap,
             name: qtName,
-            email: qtEmail || `${qtLdap}@olenick.com`,
+            email: qtEmail || `${qtLdap}@qualitestgroup.com`,
             company: "QT",
             designation: "QT Team Member",
             organisation: "QT",
@@ -1100,7 +1100,7 @@
                   emp.designation.toLowerCase().includes(searchTerm) ||
                   (emp.email && emp.email.toLowerCase().includes(searchTerm))
               )
-              .slice(0, 5);
+              .slice(0,10);
             console.log('Local search results:', filtered.length);
           }
 
