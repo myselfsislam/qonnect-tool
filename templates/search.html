@@ -5,22 +5,105 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Qonnect - Search Connection</title>
     <script src="https://cdn.tailwindcss.com"></script>
-      <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+    
+    <!-- Swiper CSS and JS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    
     <link rel="stylesheet" href="static/css/style.css">
 
-  </head>
-<body class="bg-gray-50 text-gray-900">
-    <nav class="w-full p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
-        <div class="container mx-auto flex items-center justify-between">
-            <a href="/" class="flex items-center gap-5">
-                <i class="fas fa-project-diagram text-2xl text-primary text-white"></i>
-                <h1 class="text-2xl font-bold text-white">Qonnect</h1>
-            </a>
-        </div>
-    </nav>
+    <style>
+      /* Enforce consistent dimensions for all employee cards */
+      .unified-card {
+        width: 220px;
+        height: 195px;
+        position: relative; /* Positioning context for badges */
+      }
+      
+      /* Ensure the swiper slide respects the card's width */
+      .swiper-slide {
+        width: auto;
+      }
 
+      /* Connection badge styles */
+      .connection-badge {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        padding: 2px 8px;
+        font-size: 10px;
+        font-weight: 600;
+        border-radius: 9999px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        z-index: 10;
+      }
+
+      .badge-strong {
+        background-color: #dcfce7;
+        color: #166534;
+        border: 1px solid #86efac;
+      }
+
+      .badge-medium {
+        background-color: #fef9c3;
+        color: #854d0e;
+        border: 1px solid #fcd34d;
+      }
+
+      .badge-weak {
+        background-color: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+      }
+
+      /* Tree view styles for expanded hierarchy */
+      .tree-node > .node-wrapper {
+        display: flex;
+        align-items: center;
+        position: relative;
+      }
+
+      .qt-overlay-container {
+        position: absolute;
+        right: 100%;
+        top: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        z-index: 5;
+      }
+
+      .qt-connection-line-dynamic {
+        width: 5rem;
+        height: 5px;
+      }
+
+      .line-strong {
+        background-color: #86efac;
+      }
+      
+      .line-medium {
+        background-color: #fcd34d;
+      }
+      
+      .line-weak {
+        background-color: #fca5a5;
+      }
+    </style>
+  </head>
+  
+  <body class="bg-gray-50 text-gray-900">
+    <nav class="w-full p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
+      <div class="container mx-auto flex items-center justify-between">
+        <a href="/" class="flex items-center gap-5">
+          <i class="fas fa-project-diagram text-2xl text-primary text-white"></i>
+          <h1 class="text-2xl font-bold text-white">Qonnect</h1>
+        </a>
+      </div>
+    </nav>
 
     <div class="max-w-7xl p-8 mx-auto">
       <div class="text-center mb-8">
@@ -49,6 +132,13 @@
       // Data
       let googleEmployees = [];
       let coreTeam = [];
+      const connectionPaths = {};
+
+      // Global state
+      let selectedEmployee = null;
+      let expandedConnection = null;
+      let summarySwiperInstance = null;
+      const employeeMap = new Map();
 
       // Load data from Flask API
       async function loadFlaskData() {
@@ -72,7 +162,7 @@
           const qtData = await qtResponse.json();
           coreTeam = qtData.map(emp => ({
             ldap: emp.ldap,
-            email: emp.email || emp.ldap + '@olenick.com',
+            email: emp.email || emp.ldap + '@qualitestgroup.com',
             avatar: emp.avatar || `https://i.pravatar.cc/150?u=${emp.ldap}`,
             name: emp.name,
             company: emp.company || "QT",
@@ -84,10 +174,6 @@
           console.log('✅ API data loaded successfully');
           console.log('📊 Google employees loaded:', googleEmployees.length);
           console.log('📊 QT team loaded:', coreTeam.length);
-          
-          // Log some sample data
-          console.log('Sample Google employees:', googleEmployees.slice(0, 3).map(e => ({ name: e.name, ldap: e.ldap, manager: e.manager })));
-          console.log('Sample QT team:', coreTeam.slice(0, 3).map(e => ({ name: e.name, ldap: e.ldap })));
           
         } catch (error) {
           console.log('⚠️ API not available, using sample data');
@@ -129,45 +215,75 @@
 
           coreTeam = [
             {
-              ldap: "lihi.segev",
-              email: "lihi.segev@olenick.com",
-              avatar: "https://i.pravatar.cc/150?u=lihi.segev",
-              name: "Lihi Segev",
-              company: "QT",
-              designation: "Engineering Manager",
-              organisation: "QT Engineering",
-              connections: [],
+              ldap: 'lihis',
+              name: 'Lihi Segev',
+              email: 'lihis@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Executive Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
             },
             {
-              ldap: "abhijeet.bagade",
-              email: "abhijeet.bagade@olenick.com", 
-              avatar: "https://i.pravatar.cc/150?u=abhijeet.bagade",
-              name: "Abhijeet Bagade",
-              company: "QT",
-              designation: "Product Manager",
-              organisation: "QT Product",
-              connections: [],
+              ldap: 'a.bagade',
+              name: 'Abhijeet Bagade',
+              email: 'a.bagade@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
             },
             {
-              ldap: "omri.nissim",
-              email: "omri.nissim@olenick.com",
-              avatar: "https://i.pravatar.cc/150?u=omri.nissim", 
-              name: "Omri Nissim",
-              company: "QT",
-              designation: "Senior Developer", 
-              organisation: "QT Engineering",
-              connections: [],
+              ldap: 'omrinis',
+              name: 'Omri Nissim',
+              email: 'omrinis@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
             },
             {
-              ldap: "john.mitchell",
-              email: "john.mitchell@qt.com",
-              avatar: "https://i.pravatar.cc/150?u=john.mitchell",
-              name: "John Mitchell",
-              company: "QT", 
-              designation: "Global Delivery Manager",
-              organisation: "QT Delivery",
-              connections: [],
+              ldap: 'kobi.kol',
+              name: 'Kobi Kol',
+              email: 'kobi.kol@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Associate Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
             },
+            {
+              ldap: 'jillian.orrico',
+              name: 'Jillian OrRico',
+              email: 'jillian.orrico@qualitestgroup.com',
+              department: 'Sales',
+              designation: 'Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'michael.bush',
+              name: 'Michael Bush',
+              email: 'michael.bush@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Associate Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            },
+            {
+              ldap: 'mayank.arya',
+              name: 'Mayank Arya',
+              email: 'mayank.arya@qualitestgroup.com',
+              department: 'Account Management and Delivery',
+              designation: 'Associate Vice President',
+              company: 'Qualitest',
+              organisation: 'Qualitest',
+              connections: []
+            }
           ];
 
           console.log('🔧 Using sample data');
@@ -178,24 +294,25 @@
         console.log(`- QT team: ${coreTeam.length}`);
       }
 
-      const connectionPaths = {};
-
-      // Global state
-      let selectedEmployee = null;
-      let expandedConnection = null;
-      const employeeMap = new Map();
-
       function updateEmployeeMap() {
         employeeMap.clear();
         googleEmployees.forEach((e) => employeeMap.set(e.ldap, e));
         coreTeam.forEach((e) => employeeMap.set(e.ldap, e));
       }
 
-      function createEmployeeCard(employee, className = "") {
+      function createEmployeeCard(employee, className = "", connectionStrength = null) {
         if (!employee) return document.createElement("div");
+
+        // Connection strength badge
+        let strengthBadge = "";
+        if (connectionStrength) {
+          strengthBadge = `<div class="connection-badge badge-${connectionStrength}">
+                            ${connectionStrength.charAt(0).toUpperCase() + connectionStrength.slice(1)}
+                         </div>`;
+        }
+
         const card = document.createElement("div");
         const borderClass = employee.company === "GOOGLE" ? "google-border" : "qt-border";
-        // MODIFICATION: Removed h-full to rely on fixed height from CSS
         card.className = `unified-card ${borderClass} ${className}`;
         
         // Show avatar only for Google employees, not QT team members
@@ -205,14 +322,15 @@
         }
         
         card.innerHTML = `
-                <div class="flex-1 flex flex-col items-center text-center justify-center">
-                    ${avatarHtml}
-                    <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">${employee.organisation || employee.company}</p>
-                    <h4 class="font-bold text-sm text-gray-800">${employee.name}</h4>
-                    <p class="text-xs text-gray-500">${employee.designation}</p>
-                    <p class="text-[10px] text-gray-400 mt-1 font-mono">${employee.ldap}</p>
-                </div>
-            `;
+            ${strengthBadge}
+            <div class="flex-1 flex flex-col items-center text-center justify-center">
+                ${avatarHtml}
+                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500">${employee.organisation || employee.company}</p>
+                <h4 class="font-bold text-sm text-gray-800">${employee.name}</h4>
+                <p class="text-xs text-gray-500">${employee.designation}</p>
+                <p class="text-[10px] text-gray-400 mt-1 font-mono">${employee.ldap}</p>
+            </div>
+        `;
         return card;
       }
 
@@ -242,131 +360,505 @@
         return tooltip;
       }
 
-      // --- HIERARCHY RENDERING LOGIC ---
-
+      // Enhanced hierarchy rendering with proper organizational structure
       async function renderHierarchyChart(employee) {
         console.log('🎯 renderHierarchyChart called for:', employee.name, employee.ldap);
         
+        // Build organizational hierarchy for all employees
+        const allEmployees = [...googleEmployees, ...coreTeam];
+        const orgHierarchy = buildOrganizationalHierarchy(allEmployees);
+        
+        // Build the management chain for the selected employee
+        const managementChain = buildManagementChain(employee, orgHierarchy);
+        console.log('📊 Management chain for', employee.name, ':', managementChain.map(emp => emp.name));
+        
+        const content = document.createElement("div");
+        content.className = "space-y-0";
+
+        // Show the full management hierarchy
+        if (managementChain.length > 1) {
+          content.innerHTML = `
+            <div class="text-center text-sm font-semibold text-gray-600 mb-6">Organizational Hierarchy for ${employee.name}</div>
+          `;
+
+          // Create hierarchy visualization
+          const hierarchyContainer = document.createElement("div");
+          hierarchyContainer.className = "flex flex-col items-center space-y-4";
+
+          managementChain.forEach((chainEmployee, index) => {
+            // Create employee card
+            const isSelectedEmployee = chainEmployee.ldap === employee.ldap;
+            const cardClass = isSelectedEmployee ? "ring-2 ring-blue-500" : "";
+            const card = createEmployeeCard(chainEmployee, cardClass);
+            
+            // Add level indicator
+            const levelIndicator = document.createElement("div");
+            levelIndicator.className = "text-xs text-gray-500 mb-2 text-center";
+            if (index === 0 && managementChain.length > 1) {
+              levelIndicator.textContent = "Top Manager";
+            } else if (isSelectedEmployee) {
+              levelIndicator.textContent = "Selected Employee";
+            } else {
+              levelIndicator.textContent = `Manager Level ${managementChain.length - index - 1}`;
+            }
+            
+            const cardContainer = document.createElement("div");
+            cardContainer.className = "flex flex-col items-center";
+            cardContainer.appendChild(levelIndicator);
+            cardContainer.appendChild(card);
+            
+            hierarchyContainer.appendChild(cardContainer);
+
+            // Add connector line (except for last item)
+            if (index < managementChain.length - 1) {
+              const connector = document.createElement("div");
+              connector.className = "flex flex-col items-center";
+              connector.innerHTML = `
+                <div class="w-px h-6 bg-gray-300"></div>
+                <div class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
+                  Reports to
+                </div>
+                <div class="w-px h-6 bg-gray-300"></div>
+              `;
+              hierarchyContainer.appendChild(connector);
+            }
+          });
+
+          content.appendChild(hierarchyContainer);
+
+          // Show direct reports if the selected employee has any
+          const selectedNode = orgHierarchy.get(employee.ldap);
+          if (selectedNode && selectedNode.reportees.length > 0) {
+            const reportsSection = document.createElement("div");
+            reportsSection.className = "mt-8 pt-6 border-t border-gray-200";
+            
+            const reportsTitle = document.createElement("div");
+            reportsTitle.className = "text-center text-sm font-semibold text-gray-600 mb-4";
+            reportsTitle.textContent = `${employee.name}'s Direct Reports (${selectedNode.reportees.length})`;
+            reportsSection.appendChild(reportsTitle);
+
+            // Create Swiper for direct reports if there are many
+            if (selectedNode.reportees.length > 3) {
+              const swiperContainer = document.createElement("div");
+              swiperContainer.className = "reports-swiper swiper";
+              swiperContainer.innerHTML = `<div class="swiper-wrapper"></div>`;
+              const swiperWrapper = swiperContainer.querySelector(".swiper-wrapper");
+
+              selectedNode.reportees.forEach(reporteeNode => {
+                const slide = document.createElement("div");
+                slide.className = "swiper-slide";
+                const reporteeCard = createEmployeeCard(reporteeNode.employee, "scale-90 opacity-90");
+                slide.appendChild(reporteeCard);
+                swiperWrapper.appendChild(slide);
+              });
+
+              reportsSection.appendChild(swiperContainer);
+
+              // Initialize Swiper for reports
+              setTimeout(() => {
+                new Swiper(".reports-swiper", {
+                  spaceBetween: 16,
+                  slidesPerView: 1,
+                  centeredSlides: true,
+                  breakpoints: {
+                    640: { slidesPerView: 2, centeredSlides: false },
+                    1024: { slidesPerView: 3, centeredSlides: false },
+                    1280: { slidesPerView: 4, centeredSlides: false },
+                  },
+                });
+              }, 0);
+            } else {
+              // Simple grid for few reports
+              const reportsGrid = document.createElement("div");
+              reportsGrid.className = "flex flex-wrap justify-center gap-4";
+              
+              selectedNode.reportees.forEach(reporteeNode => {
+                const reporteeCard = createEmployeeCard(reporteeNode.employee, "scale-90 opacity-90");
+                reportsGrid.appendChild(reporteeCard);
+              });
+              
+              reportsSection.appendChild(reportsGrid);
+            }
+
+            content.appendChild(reportsSection);
+          }
+
+          // Show QT connections section
+          const qtConnectionsSection = await renderQTConnections(employee);
+          content.appendChild(qtConnectionsSection);
+
+        } else {
+          // Single employee with no manager hierarchy
+          content.innerHTML = `
+            <div class="flex justify-center">${createEmployeeCard(employee).outerHTML}</div>
+            <div class="text-center text-sm text-gray-500 mt-4">No manager hierarchy found</div>
+          `;
+          
+          // Still show QT connections
+          const qtConnectionsSection = await renderQTConnections(employee);
+          content.appendChild(qtConnectionsSection);
+        }
+        
+        console.log('📋 Organizational hierarchy rendering complete');
+        return content;
+      }
+
+      // Helper function to build management chain from employee to top
+      function buildManagementChain(employee, orgHierarchy) {
+        const chain = [];
+        let currentNode = orgHierarchy.get(employee.ldap);
+        
+        // Start with the employee
+        if (currentNode) {
+          chain.push(currentNode.employee);
+          
+          // Walk up the management chain
+          while (currentNode.manager) {
+            currentNode = currentNode.manager;
+            chain.unshift(currentNode.employee); // Add to beginning to show top-down
+          }
+        } else {
+          // Fallback if employee not found in hierarchy
+          chain.push(employee);
+        }
+        
+        return chain;
+      }
+
+      // Separate function to render QT connections (maintains existing UI)
+      async function renderQTConnections(employee) {
         let connections = [];
         
-        // First try to get connections from your Flask API
+        // First try to get real connections from Flask API (from Connections sheet)
         try {
           const response = await fetch(`/api/connections/${encodeURIComponent(employee.ldap)}`);
           if (response.ok) {
             connections = await response.json();
-            console.log('✅ Got connections from API:', connections.length);
-          } else {
-            console.log('⚠️ API connections returned:', response.status);
+            console.log('✅ Got real QT connections from API:', connections.length);
           }
         } catch (error) {
           console.log('⚠️ API connections failed:', error);
         }
 
-        // ALWAYS create demo connections for ashwink regardless of API response
-        if (employee.ldap === 'ashwink' || employee.name.toLowerCase().includes('ashwin')) {
-          console.log('🔧 Creating FORCED demo connections for ashwink...');
-          console.log('🔧 Available coreTeam:', coreTeam.length, coreTeam.map(qt => qt.name));
-          
-          // Create connections using real QT team data or fallback data
-          const qtMembers = coreTeam.length > 0 ? coreTeam : [
-            { ldap: "lihi.segev", name: "Lihi Segev", company: "QT", designation: "Engineering Manager", organisation: "QT Engineering" },
-            { ldap: "abhijeet.bagade", name: "Abhijeet Bagade", company: "QT", designation: "Product Manager", organisation: "QT Product" },
-            { ldap: "omri.nissim", name: "Omri Nissim", company: "QT", designation: "Senior Developer", organisation: "QT Engineering" },
-            { ldap: "john.mitchell", name: "John Mitchell", company: "QT", designation: "Global Delivery Manager", organisation: "QT Delivery" }
-          ];
-
-          connections = qtMembers.slice(0, 4).map((qtMember, index) => {
-            const strengths = ['strong', 'medium', 'medium', 'weak'];
-            return {
-              qtLdap: qtMember.ldap,
-              path: [qtMember.ldap, employee.ldap],
-              connectionStrength: strengths[index] || 'medium'
-            };
-          });
-          
-          console.log('✅ FORCED demo connections created:', connections.length);
-          connections.forEach((conn, i) => {
-            console.log(`Connection ${i + 1}: ${conn.qtLdap} -> ${employee.ldap} (${conn.connectionStrength})`);
-          });
+        // Also try to get connections from the dedicated connections endpoint
+        if (connections.length === 0) {
+          try {
+            const response = await fetch(`/api/connections-from-sheets`);
+            if (response.ok) {
+              const sheetsData = await response.json();
+              // Filter connections for this specific employee
+              const employeeConnections = sheetsData.connections.filter(conn => 
+                conn['Google Employee LDAP'] === employee.ldap || 
+                conn['Google Employee Email'] === employee.email ||
+                conn['Google Employee Name'] === employee.name
+              );
+              
+              // Convert sheet data to our connection format
+              connections = employeeConnections.map(conn => ({
+                qtLdap: conn['QT Employee LDAP'],
+                qtName: conn['QT Employee Name'],
+                qtEmail: conn['QT Employee Email'],
+                connectionStrength: conn['Connection Strength']?.toLowerCase() || 'medium',
+                path: [conn['QT Employee LDAP'], employee.ldap],
+                declaredBy: conn['Declared By'],
+                timestamp: conn['Timestamp']
+              }));
+              
+              console.log('✅ Got connections from Connections sheet:', connections.length);
+            }
+          } catch (error) {
+            console.log('⚠️ Connections sheet API failed:', error);
+          }
         }
 
-        const content = document.createElement("div");
-        content.className = "space-y-0";
+        // Fallback: Demo connections for ashwink for testing
+        // if ((employee.ldap === 'ashwink' || employee.name.toLowerCase().includes('ashwin')) && connections.length === 0) {
+        //   console.log('🔧 Creating demo connections for ashwink (no real connections found)');
+        //   const qtMembers = coreTeam.length > 0 ? coreTeam : [
+        //     { ldap: "lihi.segev", name: "Lihi Segev", company: "QT", designation: "Engineering Manager", organisation: "QT Engineering" },
+        //     { ldap: "abhijeet.bagade", name: "Abhijeet Bagade", company: "QT", designation: "Product Manager", organisation: "QT Product" },
+        //     { ldap: "omri.nissim", name: "Omri Nissim", company: "QT", designation: "Senior Developer", organisation: "QT Engineering" },
+        //     { ldap: "john.mitchell", name: "John Mitchell", company: "QT", designation: "Global Delivery Manager", organisation: "QT Delivery" }
+        //   ];
 
-        content.innerHTML = `
-                <div class="flex justify-center">${createEmployeeCard(employee).outerHTML}</div>
-                <div class="flex justify-center"><div class="w-px h-8 bg-gray-300"></div></div>
-                <div class="text-center text-sm font-semibold text-gray-600">Shortest paths from QT Team</div>
-            `;
+        //   connections = qtMembers.slice(0, 4).map((qtMember, index) => {
+        //     const strengths = ['strong', 'medium', 'medium', 'weak'];
+        //     return {
+        //       qtLdap: qtMember.ldap,
+        //       qtName: qtMember.name,
+        //       connectionStrength: strengths[index] || 'medium',
+        //       path: [qtMember.ldap, employee.ldap]
+        //     };
+        //   });
+        // }
 
-        console.log('🔗 Rendering hierarchy with', connections.length, 'connections');
+        const qtSection = document.createElement("div");
+        qtSection.className = "mt-8 pt-6 border-t border-gray-200";
 
         if (connections.length > 0) {
-          const connectionsContainer = document.createElement("div");
-          connectionsContainer.className = "flex flex-wrap justify-center items-start gap-8 pt-0";
+          qtSection.innerHTML = `
+            <div class="text-center text-sm font-semibold text-gray-600 mb-4">
+              QT Team Connections ${connections.length > 0 ? `(${connections.length} declared)` : ''}
+            </div>
+          `;
 
-          connections.forEach((conn, index) => {
-            console.log(`Processing connection ${index + 1}:`, conn);
-            
-            // Find QT employee in coreTeam or create one
-            let qtEmployee = coreTeam.find((e) => e.ldap === conn.qtLdap);
-            
-            if (!qtEmployee) {
-              console.log('⚠️ QT employee not found in coreTeam, creating fallback for:', conn.qtLdap);
-              // Create fallback employee data
-              const name = conn.qtLdap.split('.').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
-              qtEmployee = {
-                ldap: conn.qtLdap,
-                name: name,
-                company: "QT",
-                designation: "QT Team Member",
-                organisation: "QT",
-                avatar: `https://i.pravatar.cc/150?u=${conn.qtLdap}`
-              };
-            }
+          // Create Swiper for QT connections (maintaining existing UI)
+          const swiperContainer = document.createElement("div");
+          swiperContainer.className = "summary-swiper swiper";
+          swiperContainer.innerHTML = `<div class="swiper-wrapper"></div>`;
+          const swiperWrapper = swiperContainer.querySelector(".swiper-wrapper");
 
-            console.log('✅ Using QT employee:', qtEmployee.name, qtEmployee.ldap);
+          connections.forEach((conn) => {
+            // Find or create QT employee using helper function
+            const qtEmployee = findQTEmployee(conn.qtLdap, conn.qtName, conn.qtEmail);
+            
+            // Normalize connection strength
+            const connectionStrength = normalizeConnectionStrength(conn.connectionStrength);
 
             const connectionDiv = document.createElement("div");
             connectionDiv.className = "flex flex-col items-center gap-0";
-            
+
             const topLine = document.createElement("div");
             topLine.className = "w-px h-4 bg-gray-300";
             
             const tooltip = createConnectionTooltip(
               conn.path || [conn.qtLdap, employee.ldap], 
               () => {
-                console.log('🔗 Connection badge clicked for:', qtEmployee.name);
-                showExpandedHierarchy(qtEmployee, conn.path || [conn.qtLdap, employee.ldap]);
+                console.log('🔗 Real connection clicked for:', qtEmployee.name, 'Strength:', connectionStrength);
+                showExpandedHierarchy(qtEmployee, conn.path || [conn.qtLdap, employee.ldap], connectionStrength);
               }
             );
             
             const bottomLine = document.createElement("div");
             bottomLine.className = "w-px h-4 bg-gray-300";
             
-            const card = createEmployeeCard(qtEmployee);
+            const card = createEmployeeCard(qtEmployee, "", connectionStrength);
+
+            // Add connection metadata if available (from Connections sheet)
+            if (conn.timestamp || conn.declaredBy) {
+              const metadata = document.createElement("div");
+              metadata.className = "text-xs text-gray-400 text-center mt-2 px-2 max-w-full overflow-hidden";
+              let metadataText = "";
+              if (conn.declaredBy && conn.declaredBy !== 'System') {
+                metadataText += `Declared by: ${conn.declaredBy}`;
+              }
+              if (conn.timestamp) {
+                const date = new Date(conn.timestamp);
+                if (!isNaN(date.getTime())) {
+                  metadataText += (metadataText ? ' • ' : '') + date.toLocaleDateString();
+                }
+              }
+              if (metadataText) {
+                metadata.textContent = metadataText;
+                card.appendChild(metadata);
+              }
+            }
 
             connectionDiv.appendChild(topLine);
             connectionDiv.appendChild(tooltip);
             connectionDiv.appendChild(bottomLine);
             connectionDiv.appendChild(card);
-            connectionsContainer.appendChild(connectionDiv);
-            
-            console.log(`✅ Added connection card for ${qtEmployee.name}`);
+
+            const slide = document.createElement("div");
+            slide.className = "swiper-slide";
+            slide.appendChild(connectionDiv);
+            swiperWrapper.appendChild(slide);
           });
-          
-          content.appendChild(connectionsContainer);
-          console.log('✅ All connection cards added to container');
+
+          qtSection.appendChild(swiperContainer);
+
+          // Initialize Swiper for QT connections
+          if (summarySwiperInstance) {
+            summarySwiperInstance.destroy();
+          }
+
+          setTimeout(() => {
+            summarySwiperInstance = new Swiper(".summary-swiper", {
+              spaceBetween: 16,
+              loop: connections.length > 3, // Only loop if we have more than 3 connections
+              slidesPerView: 1,
+              centeredSlides: true,
+              breakpoints: {
+                640: { slidesPerView: Math.min(2, connections.length), centeredSlides: false },
+                1024: { slidesPerView: Math.min(3, connections.length), centeredSlides: false },
+                1280: { slidesPerView: Math.min(4, connections.length), centeredSlides: false },
+              },
+            });
+          }, 0);
         } else {
-          console.log('❌ No connections to display');
-          content.innerHTML += '<div class="text-center muted py-8"><p>No connection paths found to this employee.</p></div>';
+          qtSection.innerHTML = `
+            <div class="text-center text-sm font-semibold text-gray-600 mb-4">QT Team Connections</div>
+            <div class="text-center muted py-4">
+              <p>No declared connections found for this employee.</p>
+              <p class="text-xs mt-2">Connections can be declared in the <a href="/declare" class="text-blue-500 hover:underline">Declare page</a>.</p>
+            </div>
+          `;
         }
-        
-        console.log('📋 Hierarchy rendering complete');
-        return content;
+
+        return qtSection;
       }
 
-      function renderExpandedHierarchy(qtEmployee, path) {
+      // Helper function to normalize connection strength values
+      function normalizeConnectionStrength(strength) {
+        if (!strength) return 'medium';
+        const normalized = strength.toLowerCase().trim();
+        if (['strong', 'medium', 'weak'].includes(normalized)) {
+          return normalized;
+        }
+        return 'medium'; // Default fallback
+      }
+
+      // Helper function to find QT employee from various sources
+      function findQTEmployee(qtLdap, qtName, qtEmail) {
+        // First try to find in coreTeam
+        let qtEmployee = coreTeam.find((e) => 
+          e.ldap === qtLdap || 
+          e.email === qtEmail || 
+          e.name === qtName
+        );
+        
+        if (qtEmployee) {
+          return qtEmployee;
+        }
+        
+        // Create from connection data if we have names
+        if (qtName && qtLdap) {
+          return {
+            ldap: qtLdap,
+            name: qtName,
+            email: qtEmail || `${qtLdap}@olenick.com`,
+            company: "QT",
+            designation: "QT Team Member",
+            organisation: "QT",
+            avatar: `https://i.pravatar.cc/150?u=${qtLdap}`
+          };
+        }
+        
+        // Fallback creation from LDAP only
+        const name = qtLdap.split('.').map(s => 
+          s.charAt(0).toUpperCase() + s.slice(1)
+        ).join(' ');
+        
+        return {
+          ldap: qtLdap,
+          name: name,
+          company: "QT",
+          designation: "QT Team Member",
+          organisation: "QT",
+          avatar: `https://i.pravatar.cc/150?u=${qtLdap}`
+        };
+      }
+      function normalizeManagerReference(manager) {
+        if (!manager) return null;
+        
+        // If it's an email, extract LDAP
+        if (manager.includes('@')) {
+          return manager.split('@')[0];
+        }
+        
+        return manager;
+      }
+
+      // Helper function to build proper organizational hierarchy
+      function buildOrganizationalHierarchy(employees) {
+        const hierarchy = new Map();
+        const employeesByLdap = new Map();
+        
+        // First pass: index all employees by LDAP
+        employees.forEach(emp => {
+          employeesByLdap.set(emp.ldap, emp);
+          hierarchy.set(emp.ldap, {
+            employee: emp,
+            manager: null,
+            reportees: []
+          });
+        });
+        
+        // Second pass: build manager-reportee relationships
+        employees.forEach(emp => {
+          const normalizedManager = normalizeManagerReference(emp.manager);
+          if (normalizedManager && employeesByLdap.has(normalizedManager)) {
+            const empNode = hierarchy.get(emp.ldap);
+            const managerNode = hierarchy.get(normalizedManager);
+            
+            if (empNode && managerNode) {
+              empNode.manager = managerNode;
+              managerNode.reportees.push(empNode);
+            }
+          }
+        });
+        
+        return hierarchy;
+      }
+
+      // Helper function to find connection path through organizational hierarchy
+      function findOrganizationalPath(fromLdap, toLdap, orgHierarchy) {
+        // If direct connection exists, return it
+        if (fromLdap === toLdap) return [fromLdap];
+        
+        // Find common manager or build path up the hierarchy
+        const fromNode = orgHierarchy.get(fromLdap);
+        const toNode = orgHierarchy.get(toLdap);
+        
+        if (!fromNode || !toNode) return [fromLdap, toLdap]; // Fallback
+        
+        // Check if they have a direct reporting relationship
+        if (fromNode.manager?.employee.ldap === toLdap) {
+          return [fromLdap, toLdap];
+        }
+        if (toNode.manager?.employee.ldap === fromLdap) {
+          return [fromLdap, toLdap];
+        }
+        
+        // Check if they're peers (same manager)
+        if (fromNode.manager?.employee.ldap === toNode.manager?.employee.ldap && fromNode.manager) {
+          return [fromLdap, fromNode.manager.employee.ldap, toLdap];
+        }
+        
+        // For now, return simple path - can be enhanced for deeper hierarchy traversal
+        return [fromLdap, toLdap];
+      }
+      function getEmployeeName(path, fallbackEmployee) {
+        if (!path || path.length === 0) {
+          return fallbackEmployee?.name || 'Employee';
+        }
+        
+        const targetLdap = path[path.length - 1];
+        const targetEmployee = employeeMap.get(targetLdap);
+        
+        if (targetEmployee) {
+          return targetEmployee.name;
+        }
+        
+        // If not found in map, return the LDAP or fallback
+        return targetLdap || fallbackEmployee?.name || 'Employee';
+      }
+
+      // Helper function to safely get employees from path
+      function getPathEmployees(path) {
+        if (!path || path.length === 0) return [];
+        
+        return path.map((ldap) => {
+          const employee = employeeMap.get(ldap);
+          if (employee) {
+            return employee;
+          }
+          
+          // Create a fallback employee object if not found in map
+          console.warn(`Employee with LDAP ${ldap} not found in employeeMap, creating fallback`);
+          return {
+            ldap: ldap,
+            name: ldap.charAt(0).toUpperCase() + ldap.slice(1),
+            company: ldap.includes('@google.com') ? 'GOOGLE' : 'QT',
+            designation: 'Unknown',
+            organisation: 'Unknown',
+            avatar: `https://i.pravatar.cc/150?u=${ldap}`,
+            manager: null
+          };
+        }).filter(Boolean);
+      }
+
+      function renderExpandedHierarchy(qtEmployee, path, connectionStrength) {
         console.log('📊 renderExpandedHierarchy called with:', qtEmployee.name, 'path:', path);
         
         const content = document.createElement("div");
@@ -380,61 +872,122 @@
                 </div>
                 <div class="text-center">
                     <h2 class="text-xl font-bold">Connection Path</h2>
-                    <p class="muted mt-1">From ${qtEmployee.name} to ${path && path.length > 0 ? (employeeMap.get(path[path.length - 1])?.name || path[path.length - 1]) : selectedEmployee?.name || 'Employee'}</p>
+                    <p class="muted mt-1">From ${qtEmployee.name} to ${getEmployeeName(path, selectedEmployee)}</p>
                 </div>
             `;
 
-        // Create a simple hierarchy view for now
-        const hierarchyContainer = document.createElement("div");
-        hierarchyContainer.className = "flex flex-col items-center space-y-8 py-8";
-
-        // Show QT employee at top
-        const qtCard = createEmployeeCard(qtEmployee);
-        qtCard.classList.add("mb-4");
-        hierarchyContainer.appendChild(qtCard);
-
-        // Connection line
-        const connectionLine = document.createElement("div");
-        connectionLine.className = "flex flex-col items-center";
-        connectionLine.innerHTML = `
-          <div class="w-px h-8 bg-gray-300"></div>
-          <div class="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
-            Direct Connection
-          </div>
-          <div class="w-px h-8 bg-gray-300"></div>
-        `;
-        hierarchyContainer.appendChild(connectionLine);
-
-        // Show target employee at bottom
-        if (selectedEmployee) {
-          const targetCard = createEmployeeCard(selectedEmployee);
-          hierarchyContainer.appendChild(targetCard);
+        // Use organizational hierarchy for better visualization
+        const allEmployees = [...googleEmployees, ...coreTeam];
+        const orgHierarchy = buildOrganizationalHierarchy(allEmployees);
+        
+        // Get path employees safely
+        const pathEmployees = getPathEmployees(path);
+        
+        if (pathEmployees.length === 0) {
+          console.error('No valid employees found in path');
+          content.innerHTML += '<div class="text-center muted py-8"><p>Error: No valid employees found in connection path.</p></div>';
+          
+          content.querySelector("#backBtn").addEventListener("click", () => {
+            expandedConnection = null;
+            showSelectedEmployee();
+          });
+          
+          return content;
         }
 
-        // If ashwink and we have real data, show his actual team
-        if (selectedEmployee && selectedEmployee.ldap === 'ashwink') {
-          console.log('👥 Adding ashwink team members...');
+        // Enhanced visualization based on actual organizational structure
+        const hierarchyContainer = document.createElement("div");
+        hierarchyContainer.className = "flex flex-col items-center space-y-6 py-8";
+
+        // Show QT employee at top with badge
+        const qtCardContainer = document.createElement("div");
+        qtCardContainer.className = "relative";
+        const qtCard = createEmployeeCard(qtEmployee, "", connectionStrength);
+        qtCardContainer.appendChild(qtCard);
+        hierarchyContainer.appendChild(qtCardContainer);
+
+        // Connection visualization
+        const connectionSection = document.createElement("div");
+        connectionSection.className = "flex flex-col items-center space-y-4";
+
+        // Connection strength indicator
+        const strengthIndicator = document.createElement("div");
+        strengthIndicator.className = "flex items-center space-x-2";
+        strengthIndicator.innerHTML = `
+          <div class="w-8 h-1 bg-gray-300"></div>
+          <div class="px-3 py-1 rounded-full text-xs font-semibold ${
+            connectionStrength === 'strong' ? 'bg-green-100 text-green-800' :
+            connectionStrength === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+            'bg-red-100 text-red-800'
+          }">
+            ${connectionStrength ? connectionStrength.charAt(0).toUpperCase() + connectionStrength.slice(1) : 'Direct'} Connection
+          </div>
+          <div class="w-8 h-1 bg-gray-300"></div>
+        `;
+        connectionSection.appendChild(strengthIndicator);
+
+        // Path visualization
+        if (pathEmployees.length > 2) {
+          // Multi-step path
+          const pathContainer = document.createElement("div");
+          pathContainer.className = "flex flex-col items-center space-y-4";
           
-          // Find employees who report to ashwink
-          const reportees = googleEmployees.filter(emp => 
-            emp.manager === 'ashwink@google.com' || emp.manager === 'ashwink'
-          );
-          
-          console.log('📊 Found reportees:', reportees.length);
-          
-          if (reportees.length > 0) {
-            const teamSection = document.createElement("div");
-            teamSection.className = "mt-8 pt-8 border-t border-gray-200";
-            teamSection.innerHTML = `
-              <div class="text-center text-sm font-semibold text-gray-600 mb-4">
-                Ashwin's Team (${reportees.length} direct reports)
-              </div>
-              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center">
-                ${reportees.slice(0, 6).map(emp => createEmployeeCard(emp).outerHTML).join('')}
-              </div>
-            `;
-            hierarchyContainer.appendChild(teamSection);
+          for (let i = 1; i < pathEmployees.length - 1; i++) {
+            const intermediateEmployee = pathEmployees[i];
+            const intermediateCard = createEmployeeCard(intermediateEmployee, "opacity-75 scale-90");
+            
+            const stepIndicator = document.createElement("div");
+            stepIndicator.className = "text-xs text-gray-500 mb-2";
+            stepIndicator.textContent = `Via: ${intermediateEmployee.designation}`;
+            
+            pathContainer.appendChild(stepIndicator);
+            pathContainer.appendChild(intermediateCard);
+            
+            if (i < pathEmployees.length - 2) {
+              const connector = document.createElement("div");
+              connector.className = "w-px h-6 bg-gray-300";
+              pathContainer.appendChild(connector);
+            }
           }
+          
+          connectionSection.appendChild(pathContainer);
+        }
+
+        hierarchyContainer.appendChild(connectionSection);
+
+        // Show target employee at bottom
+        const targetEmployee = pathEmployees[pathEmployees.length - 1];
+        const targetCard = createEmployeeCard(targetEmployee);
+        hierarchyContainer.appendChild(targetCard);
+
+        // Show organizational context if available
+        const targetNode = orgHierarchy.get(targetEmployee.ldap);
+        if (targetNode && targetNode.reportees.length > 0) {
+          const teamSection = document.createElement("div");
+          teamSection.className = "mt-8 pt-6 border-t border-gray-200 w-full";
+          
+          const teamTitle = document.createElement("div");
+          teamTitle.className = "text-center text-sm font-semibold text-gray-600 mb-4";
+          teamTitle.textContent = `${targetEmployee.name}'s Team (${targetNode.reportees.length} direct reports)`;
+          teamSection.appendChild(teamTitle);
+          
+          const teamGrid = document.createElement("div");
+          teamGrid.className = "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 justify-items-center";
+          
+          targetNode.reportees.slice(0, 6).forEach(reporteeNode => {
+            const reporteeCard = createEmployeeCard(reporteeNode.employee, "scale-75 opacity-90");
+            teamGrid.appendChild(reporteeCard);
+          });
+          
+          if (targetNode.reportees.length > 6) {
+            const moreIndicator = document.createElement("div");
+            moreIndicator.className = "text-center text-sm text-gray-500 mt-2";
+            moreIndicator.textContent = `... and ${targetNode.reportees.length - 6} more`;
+            teamSection.appendChild(moreIndicator);
+          }
+          
+          teamSection.appendChild(teamGrid);
+          hierarchyContainer.appendChild(teamSection);
         }
 
         content.appendChild(hierarchyContainer);
@@ -446,7 +999,7 @@
           showSelectedEmployee();
         });
 
-        console.log('✅ Expanded hierarchy rendered');
+        console.log('✅ Enhanced hierarchy rendered with organizational structure');
         return content;
       }
 
@@ -473,11 +1026,11 @@
         return computed;
       }
 
-      function showExpandedHierarchy(qtEmployee, path) {
-        expandedConnection = { qtEmployee, path };
+      function showExpandedHierarchy(qtEmployee, path, connectionStrength) {
+        expandedConnection = { qtEmployee, path, connectionStrength };
         const mainContent = document.getElementById("mainContent");
         mainContent.innerHTML = "";
-        mainContent.appendChild(renderExpandedHierarchy(qtEmployee, path));
+        mainContent.appendChild(renderExpandedHierarchy(qtEmployee, path, connectionStrength));
         lucide.createIcons();
       }
 
@@ -491,7 +1044,7 @@
         try {
           if (expandedConnection) {
             mainContent.innerHTML = "";
-            mainContent.appendChild(renderExpandedHierarchy(expandedConnection.qtEmployee, expandedConnection.path));
+            mainContent.appendChild(renderExpandedHierarchy(expandedConnection.qtEmployee, expandedConnection.path, expandedConnection.connectionStrength));
           } else {
             console.log('Showing selected employee:', selectedEmployee.name, selectedEmployee.ldap);
             const hierarchyContent = await renderHierarchyChart(selectedEmployee);
