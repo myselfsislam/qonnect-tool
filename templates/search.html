@@ -162,7 +162,7 @@
           const qtData = await qtResponse.json();
           coreTeam = qtData.map(emp => ({
             ldap: emp.ldap,
-            email: emp.email || emp.ldap + '@olenick.com',
+            email: emp.email || emp.ldap + '@qualitestgroup.com',
             avatar: emp.avatar || `https://i.pravatar.cc/150?u=${emp.ldap}`,
             name: emp.name,
             company: emp.company || "QT",
@@ -726,7 +726,7 @@
           return {
             ldap: qtLdap,
             name: qtName,
-            email: qtEmail || `${qtLdap}@olenick.com`,
+            email: qtEmail || `${qtLdap}@qualitestgroup.com`,
             company: "QT",
             designation: "QT Team Member",
             organisation: "QT",
@@ -1100,7 +1100,7 @@
                   emp.designation.toLowerCase().includes(searchTerm) ||
                   (emp.email && emp.email.toLowerCase().includes(searchTerm))
               )
-              .slice(0, 5);
+              .slice(0,10);
             console.log('Local search results:', filtered.length);
           }
 

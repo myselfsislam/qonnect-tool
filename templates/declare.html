@@ -11,7 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-      /* Copy exact styles from search.html to ensure consistency */
+      /* Copy exact styles from your working declare.html */
       .input {
         display: flex;
         height: 2.25rem;
@@ -128,9 +128,89 @@
         from { box-shadow: 0 0 10px #86efac; }
         to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
       }
+      /* REMOVED: Calendar icon and existing connection styling */
+      .unified-card {
+        background-color: white;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        transition: all 0.3s ease-in-out;
+        display: flex;
+        flex-direction: column;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        border: 2px solid #e5e7eb;
+      }
+      .unified-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 8px -1px rgb(0 0 0 / 0.1);
+      }
+      .google-border {
+        border: 3px solid transparent;
+        border-image-slice: 1;
+        border-image-source: linear-gradient(90deg, #4285f4, #db4437, #f4b400, #0f9d58);
+      }
+      .qt-border {
+        border: 3px solid #5748c3;
+      }
+      .strength-btn {
+        font-weight: 500;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        transition: all 0.2s;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        background-color: white;
+        cursor: pointer;
+      }
+      .strength-btn:hover {
+        background-color: #f9fafb;
+      }
+      .strength-btn.active-weak {
+        background-color: #fee2e2;
+        color: #991b1b;
+        border-color: #fca5a5;
+      }
+      .strength-btn.active-medium {
+        background-color: #fef3c7;
+        color: #92400e;
+        border-color: #fcd34d;
+      }
+      .strength-btn.active-strong {
+        background-color: #dcfce7;
+        color: #166534;
+        border-color: #86efac;
+      }
+      .bg-primary {
+        background-color: #2a2559;
+      }
+      .text-primary {
+        color: #2a2559;
+      }
+      @keyframes glow-weak {
+        from { box-shadow: 0 0 10px #fca5a5; }
+        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+      }
+      @keyframes glow-medium {
+        from { box-shadow: 0 0 10px #fcd34d; }
+        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+      }
+      @keyframes glow-strong {
+        from { box-shadow: 0 0 10px #86efac; }
+        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+      }
       .glow-weak { animation: glow-weak 0.8s ease-out; }
       .glow-medium { animation: glow-medium 0.8s ease-out; }
       .glow-strong { animation: glow-strong 0.8s ease-out; }
+      
+      /* Clean connection info styling - no icons */
+      .connection-info {
+        font-size: 0.65rem;
+        color: #666;
+        margin-top: 4px;
+        text-align: center;
+        background-color: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
     </style>
   </head>
 <body class="bg-gray-50 text-gray-900">
@@ -153,7 +233,7 @@
         <div class="relative w-full max-w-lg">
           <div class="relative">
             <i data-lucide="search" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5"></i>
-            <input type="text" id="searchInput" placeholder="Search by name or LDAP (e.g., ashwink, john.smith)..." class="input pl-12" />
+            <input type="text" id="searchInput" placeholder="Search by name, LDAP, or email (e.g., ashwink, epersitz, john.smith)..." class="input pl-12" />
           </div>
           <div id="suggestions" class="suggestions hidden">
             <div id="suggestionsList"></div>
@@ -184,291 +264,293 @@
       let coreTeam = [];
       let selectedGoogleEmployee = null;
       let pendingChanges = {};
+      let existingConnections = {}; // NEW: Store existing connections from Google Sheets
 
-      // Use EXACT same data loading pattern as search.html
-      async function loadFlaskData() {
+      // Updated QT team members with correct details
+      const qtTeamData = [
+        {
+          ldap: 'lihis',
+          name: 'Lihi Segev',
+          email: 'lihis@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Executive Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=lihis"
+        },
+        {
+          ldap: 'a.bagade',
+          name: 'Abhijeet Bagade',
+          email: 'a.bagade@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=a.bagade"
+        },
+        {
+          ldap: 'omrinis',
+          name: 'Omri Nissim',
+          email: 'omrinis@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=omrinis"
+        },
+        {
+          ldap: 'kobi.kol',
+          name: 'Kobi Kol',
+          email: 'kobi.kol@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Associate Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=kobi.kol"
+        },
+        {
+          ldap: 'jillian.orrico',
+          name: 'Jillian OrRico',
+          email: 'jillian.orrico@qualitestgroup.com',
+          department: 'Sales',
+          designation: 'Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=jillian.orrico"
+        },
+        {
+          ldap: 'michael.bush',
+          name: 'Michael Bush',
+          email: 'michael.bush@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Associate Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=michael.bush"
+        },
+        {
+          ldap: 'mayank.arya',
+          name: 'Mayank Arya',
+          email: 'mayank.arya@Qualitest.com',
+          department: 'Account Management and Delivery',
+          designation: 'Associate Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=mayank.arya"
+        }
+      ];
+
+      // OPTIMIZED: Load existing connections using Google Employee Email for faster lookup
+      async function loadExistingConnections(googleEmployee) {
         try {
-          console.log('🔄 Loading data from Flask API...');
+          console.log(`🔍 Loading existing connections for ${googleEmployee.name} (${googleEmployee.email})...`);
           
-          // Load Google employees - EXACT same as search.html
-          const googleResponse = await fetch('/api/google-employees');
-          const data = await googleResponse.json();
-          googleEmployees = data.map(emp => ({
-            ldap: emp.ldap,
-            email: emp.email || emp.ldap + '@google.com',
-            avatar: emp.avatar || `https://i.pravatar.cc/150?u=${emp.ldap}`,
-            name: emp.name,
-            company: emp.company || "GOOGLE",
-            designation: emp.designation,
-            organisation: emp.organisation || emp.department || "Google",
-            manager: emp.manager || null,
-            connections: emp.connections || []
-          }));
-
-          // Load QT team - with your exact QT team structure
-          const qtResponse = await fetch('/api/qt-team');
-          const qtData = await qtResponse.json();
+          const response = await fetch('/api/connections-from-sheets');
+          if (!response.ok) {
+            console.log('⚠️ Could not load connections from sheets');
+            return {};
+          }
           
-          // Always use your hardcoded QT team to ensure consistency
-          coreTeam = [
-            {
-              ldap: 'lihis',
-              name: 'Lihi Segev',
-              email: 'lihis@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Executive Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: [],
-              avatar: "https://i.pravatar.cc/150?u=lihis"
-            },
-            {
-              ldap: 'a.bagade',
-              name: 'Abhijeet Bagade',
-              email: 'a.bagade@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: [],
-              avatar: "https://i.pravatar.cc/150?u=a.bagade"
-            },
-            {
-              ldap: 'omrinis',
-              name: 'Omri Nissim',
-              email: 'omrinis@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: [],
-              avatar: "https://i.pravatar.cc/150?u=omrinis"
-            },
-            {
-              ldap: 'kobi.kol',
-              name: 'Kobi Kol',
-              email: 'kobi.kol@qualitestgroup.com',
-              ddepartment: 'Account Management and Delivery',
-              designation: 'Associate Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: [],
-              avatar: "https://i.pravatar.cc/150?u=kobi.kol"
-            },
-            {
-              ldap: 'jillian.orrico',
-              name: 'Jillian OrRico',
-              email: 'jillian.orrico@qualitestgroup.com',
-              department: 'Sales',
-              designation: 'Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: [],
-              avatar: "https://i.pravatar.cc/150?u=jillian.orrico"
-            },
-            {
-              ldap: 'michael.bush',
-              name: 'Michael Bush',
-              email: 'michael.bush@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Associate Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: [],
-              avatar: "https://i.pravatar.cc/150?u=michael.bush"
-            },
-            {
-              ldap: 'mayank.arya',
-              name: 'Mayank Arya',
-              email: 'mayank.arya@Qualitest.com',
-              department: 'Account Management and Delivery',
-              designation: 'Associate Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: [],
-              avatar: "https://i.pravatar.cc/150?u=mayank.arya"
+          const data = await response.json();
+          const connections = data.connections || [];
+          
+          console.log(`📊 Found ${connections.length} total connections in sheets`);
+          
+          // OPTIMIZED: Use email for matching (faster and more reliable)
+          const userConnections = {};
+          connections.forEach(conn => {
+            const googleEmailFromSheet = (conn['Google Employee Email'] || '').toLowerCase().trim();
+            const googleLdapFromSheet = (conn['Google Employee LDAP'] || '').toLowerCase().trim();
+            const qtLdapFromSheet = (conn['QT Employee LDAP'] || '').toLowerCase().trim();
+            const strength = (conn['Connection Strength'] || '').toLowerCase().trim();
+            const timestamp = conn['Timestamp'] || conn['Date & Time'] || '';
+            
+            // Match by email OR LDAP for better coverage
+            const emailMatch = googleEmailFromSheet === googleEmployee.email.toLowerCase();
+            const ldapMatch = googleLdapFromSheet === googleEmployee.ldap.toLowerCase();
+            
+            if (emailMatch || ldapMatch) {
+              // Map old LDAP to new LDAP if needed
+              let mappedQtLdap = qtLdapFromSheet;
+              
+              // Handle LDAP mapping for old vs new format
+              const ldapMapping = {
+                'lihi.segev': 'lihis',
+                'abhijeet.bagade': 'a.bagade', 
+                'omri.nissim': 'omrinis',
+                'lihis': 'lihis',
+                'a.bagade': 'a.bagade',
+                'omrinis': 'omrinis'
+              };
+              
+              if (ldapMapping[qtLdapFromSheet]) {
+                mappedQtLdap = ldapMapping[qtLdapFromSheet];
+              }
+              
+              userConnections[mappedQtLdap] = {
+                strength: strength,
+                timestamp: timestamp,
+                qtName: conn['QT Employee Name'] || conn['QT Team Member'] || qtLdapFromSheet,
+                originalQtLdap: qtLdapFromSheet
+              };
+              
+              console.log(`✅ Found connection: ${mappedQtLdap} (${qtLdapFromSheet}) -> ${strength}`);
             }
-          ];
+          });
           
-          // If API returned valid data and we want to merge it, we can do so here
-          // But for now, we'll use the hardcoded data to ensure consistency
-          
-          console.log('✅ API data loaded successfully');
-          console.log('📊 Google employees loaded:', googleEmployees.length);
-          console.log('📊 QT team loaded:', coreTeam.length);
+          console.log(`📋 Loaded ${Object.keys(userConnections).length} existing connections for ${googleEmployee.name}`);
+          console.log('Connections:', userConnections);
+          return userConnections;
           
         } catch (error) {
-          console.log('⚠️ API not available, using fallback data');
-          console.error('API Error:', error);
-          
-          // Use EXACT same fallback data as search.html
-          googleEmployees = [
-            {
-              ldap: "ashwink",
-              email: "ashwink@google.com",
-              avatar: "https://i.pravatar.cc/150?u=ashwink",
-              name: "Ashwin Kumar",
-              company: "GOOGLE",
-              designation: "Senior Engineering Manager",
-              organisation: "Google",
-              manager: null,
-              connections: []
-            },
-            {
-              ldap: "epersitz",
-              email: "epersitz@google.com",
-              avatar: "https://i.pravatar.cc/150?u=epersitz",
-              name: "Ehud Persitz",
-              company: "GOOGLE", 
-              designation: "Sr. Program Manager, SLS",
-              organisation: "Google",
-              manager: null,
-              connections: []
-            },
-            {
-              ldap: "hackerj",
-              email: "hackerj@google.com", 
-              avatar: "https://i.pravatar.cc/150?u=hackerj",
-              name: "Hacker",
-              company: "GOOGLE",
-              designation: "Analyst",
-              organisation: "Google Engineering",
-              manager: "ashwink@google.com",
-              connections: []
-            }
-          ];
-
-          coreTeam = [
-            {
-              ldap: 'lihis',
-              name: 'Lihi Segev',
-              email: 'lihis@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Executive Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: []
-            },
-            {
-              ldap: 'a.bagade',
-              name: 'Abhijeet Bagade',
-              email: 'a.bagade@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: []
-            },
-            {
-              ldap: 'omrinis',
-              name: 'Omri Nissim',
-              email: 'omrinis@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: []
-            },
-            {
-              ldap: 'kobi.kol',
-              name: 'Kobi Kol',
-              email: 'kobi.kol@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Associate Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: []
-            },
-            {
-              ldap: 'jillian.orrico',
-              name: 'Jillian OrRico',
-              email: 'jillian.orrico@qualitestgroup.com',
-              department: 'Sales',
-              designation: 'Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: []
-            },
-            {
-              ldap: 'michael.bush',
-              name: 'Michael Bush',
-              email: 'michael.bush@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Associate Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: []
-            },
-            {
-              ldap: 'mayank.arya',
-              name: 'Mayank Arya',
-              email: 'mayank.arya@qualitestgroup.com',
-              department: 'Account Management and Delivery',
-              designation: 'Associate Vice President',
-              company: 'Qualitest',
-              organisation: 'Qualitest',
-              connections: []
-            }
-          ];
-
-          console.log('🔧 Using fallback data');
+          console.log('⚠️ Error loading existing connections:', error);
+          return {};
         }
-
-        console.log('📋 Final loaded data summary:');
-        console.log(`- Google employees: ${googleEmployees.length}`);
-        console.log(`- QT team: ${coreTeam.length}`);
       }
 
-      // Use EXACT same search pattern as search.html
-      async function searchGoogleEmployees(query) {
-        console.log(`Searching for: "${query}"`);
+      // Load Google employees (same as your working code)
+      async function fetchGoogleEmployees() {
+        try {
+          const response = await fetch('/api/google-employees');
+          if (response.ok) {
+            const apiData = await response.json();
+            if (apiData && apiData.length > 0) {
+              googleEmployees = apiData;
+              console.log('Loaded Google employees from API:', googleEmployees.length);
+              return;
+            }
+          }
+        } catch (error) {
+          console.log('API not available, using hardcoded data');
+        }
         
+        // Fallback data with more examples for testing LDAP search
+        googleEmployees = [
+          {
+            ldap: 'ashwink',
+            name: 'Ashwin Kumar',
+            email: 'ashwink@google.com',
+            department: 'Engineering',
+            designation: 'Senior Engineering Manager',
+            company: 'GOOGLE',
+            organisation: 'Google',
+            connections: []
+          },
+          {
+            ldap: 'epersitz',
+            name: 'Ehud Persitz',
+            email: 'epersitz@google.com',
+            department: 'SLS',
+            designation: 'Sr. Program Manager, SLS',
+            company: 'GOOGLE',
+            organisation: 'Google',
+            connections: []
+          },
+          {
+            ldap: 'john.smith',
+            name: 'John Smith',
+            email: 'john.smith@google.com',
+            department: 'Engineering',
+            designation: 'Software Engineer',
+            company: 'GOOGLE',
+            organisation: 'Google',
+            connections: []
+          },
+          {
+            ldap: 'dgavish',
+            name: 'Dennis Gavish',
+            email: 'dgavish@google.com',
+            department: 'Engineering',
+            designation: 'Software Engineer',
+            company: 'GOOGLE',
+            organisation: 'Google',
+            connections: []
+          }
+        ];
+        console.log('Using hardcoded Google employees');
+      }
+
+      async function searchGoogleEmployees(query) {
         try {
           const response = await fetch(`/api/search-google-employees?q=${encodeURIComponent(query)}`);
           if (response.ok) {
             const results = await response.json();
-            console.log(`API search found ${results.length} results`);
             if (results && results.length > 0) {
+              console.log(`✅ API search found ${results.length} results for "${query}"`);
               return results;
             }
           }
         } catch (error) {
-          console.log('API search failed, using local search:', error);
+          console.log('Search API not available, using local search');
         }
         
-        // Local search fallback - EXACT same as search.html
-        const query_lower = query.toLowerCase();
-        const results = googleEmployees.filter(emp => 
-          emp.name.toLowerCase().includes(query_lower) ||
-          emp.email.toLowerCase().includes(query_lower) ||
-          emp.ldap.toLowerCase().includes(query_lower)
-        );
-        console.log(`Local search found ${results.length} results`);
+        // ENHANCED: Local search with LDAP support
+        const query_lower = query.toLowerCase().trim();
+        console.log(`🔍 Local search for: "${query_lower}"`);
+        
+        const results = googleEmployees.filter(emp => {
+          const nameMatch = emp.name.toLowerCase().includes(query_lower);
+          const emailMatch = emp.email && emp.email.toLowerCase().includes(query_lower);
+          const ldapMatch = emp.ldap && emp.ldap.toLowerCase().includes(query_lower);
+          const designationMatch = emp.designation && emp.designation.toLowerCase().includes(query_lower);
+          
+          // Log matching details for debugging
+          if (nameMatch || emailMatch || ldapMatch || designationMatch) {
+            console.log(`✅ Match found: ${emp.name} (${emp.ldap})`);
+            console.log(`  - Name: ${nameMatch ? '✅' : '❌'} "${emp.name}"`);
+            console.log(`  - Email: ${emailMatch ? '✅' : '❌'} "${emp.email || 'N/A'}"`);
+            console.log(`  - LDAP: ${ldapMatch ? '✅' : '❌'} "${emp.ldap}"`);
+            console.log(`  - Title: ${designationMatch ? '✅' : '❌'} "${emp.designation || 'N/A'}"`);
+          }
+          
+          return nameMatch || emailMatch || ldapMatch || designationMatch;
+        });
+        
+        console.log(`📊 Local search found ${results.length} results`);
         return results;
       }
 
-      // Employee card creation
+      // FIXED: Create employee card with proper existing connection display (no icons)
       function createEmployeeCard(employee, isGoogleEmployeeCard = false) {
         const card = document.createElement("div");
 
         let bottomContent = "";
         if (!isGoogleEmployeeCard && selectedGoogleEmployee) {
-          const connection = employee.connections?.find((c) => c.ldap === selectedGoogleEmployee.ldap);
+          // Check for existing connection using the correct LDAP
+          const existingConn = existingConnections[employee.ldap];
           const pendingStrength = pendingChanges[employee.ldap];
-          const currentStrength = pendingStrength || connection?.connectionStrength;
+          const currentStrength = pendingStrength || (existingConn ? existingConn.strength : '');
+          
+          // FIXED: Clean connection info without calendar icons
+          let connectionInfo = "";
+          if (existingConn && !pendingStrength) {
+            const date = existingConn.timestamp ? new Date(existingConn.timestamp).toLocaleDateString() : 'Previously';
+            connectionInfo = `<div class="connection-info">Previously: ${existingConn.strength.toUpperCase()} (${date})</div>`;
+          }
 
           bottomContent = `
             <div class="mt-3 pt-3 border-t border-gray-100">
-              <p class="text-xs font-medium text-gray-500 mb-2">Set Connection:</p>
+              <p class="text-xs font-medium text-gray-500 mb-2">
+                ${existingConn ? 'Update Connection:' : 'Set Connection:'}
+              </p>
               <div class="flex gap-2 justify-center">
                 <button data-ldap="${employee.ldap}" data-strength="weak" class="strength-btn ${currentStrength === "weak" ? "active-weak" : ""}">Weak</button>
                 <button data-ldap="${employee.ldap}" data-strength="medium" class="strength-btn ${currentStrength === "medium" ? "active-medium" : ""}">Medium</button>
                 <button data-ldap="${employee.ldap}" data-strength="strong" class="strength-btn ${currentStrength === "strong" ? "active-strong" : ""}">Strong</button>
               </div>
+              ${connectionInfo}
             </div>`;
         }
 
         const borderClass = isGoogleEmployeeCard ? "google-border" : "qt-border";
+        // REMOVED: existing-connection class that added calendar icon
         card.className = `unified-card w-full h-full ${borderClass}`;
 
         card.innerHTML = `
@@ -486,11 +568,25 @@
         return card;
       }
 
-      function renderConnectionInterface(googleEmployee) {
+      // OPTIMIZED: Render connection interface with faster existing connections loading
+      async function renderConnectionInterface(googleEmployee) {
         selectedGoogleEmployee = googleEmployee;
         pendingChanges = {};
 
+        console.log(`🎯 Loading connections for ${googleEmployee.name} (${googleEmployee.ldap})`);
+        
+        // Optimized loading state
         const mainContent = document.getElementById("mainContent");
+        mainContent.innerHTML = `
+          <div class="text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+            <p class="mt-2 text-gray-500 text-sm">Loading connections...</p>
+          </div>`;
+
+        // OPTIMIZED: Pass the full employee object for email-based lookup
+        existingConnections = await loadExistingConnections(googleEmployee);
+        
+        // Clear loading and render interface
         mainContent.innerHTML = "";
 
         // Selected Google Employee Card
@@ -500,16 +596,23 @@
         googleCard.classList.add("w-full", "max-w-xs", "mx-auto");
         selectedEmployeeContainer.appendChild(googleCard);
 
-        // QT Team Section
+        // QT Team Section with cleaner existing connections display
+        const existingCount = Object.keys(existingConnections).length;
         const qtSection = document.createElement("div");
         qtSection.innerHTML = `
-          <h3 class="text-lg font-semibold text-gray-800 mb-4 text-center">Manage Connections with QT Team</h3>
+          <h3 class="text-lg font-semibold text-gray-800 mb-2 text-center">Manage Connections with QT Team</h3>
+          <p class="text-sm text-gray-600 mb-4 text-center">
+            ${existingCount > 0 ? `${existingCount} existing connections found` : 'No existing connections found'}
+          </p>
           <div id="qtTeamContainer" class="space-y-4"></div>`;
 
         mainContent.appendChild(selectedEmployeeContainer);
         mainContent.appendChild(qtSection);
 
         const qtContainer = document.getElementById("qtTeamContainer");
+        
+        // Use hardcoded QT team
+        coreTeam = qtTeamData;
         
         if (coreTeam.length === 0) {
           qtContainer.innerHTML = `
@@ -564,6 +667,10 @@
             });
           });
         }
+        
+        // Log final state for debugging
+        console.log('📊 Final existing connections loaded:', existingConnections);
+        console.log('🎯 QT team members rendered:', coreTeam.length);
       }
 
       function setupSearch() {
@@ -581,6 +688,7 @@
             // Reset to initial state
             selectedGoogleEmployee = null;
             pendingChanges = {};
+            existingConnections = {};
             
             const mainContent = document.getElementById("mainContent");
             mainContent.innerHTML = `
@@ -605,9 +713,22 @@
 
           suggestionsList.innerHTML = "";
           if (filteredEmployees.length > 0) {
+            console.log(`📋 Showing ${filteredEmployees.length} search suggestions`);
             filteredEmployees.forEach((employee) => {
               const item = document.createElement("button");
               item.className = "suggestion-item";
+              
+              // Enhanced display showing which field matched
+              let matchIndicator = "";
+              const queryLower = searchTerm.toLowerCase();
+              if (employee.ldap && employee.ldap.toLowerCase().includes(queryLower)) {
+                matchIndicator = `<span class="text-xs text-blue-600">LDAP match</span>`;
+              } else if (employee.email && employee.email.toLowerCase().includes(queryLower)) {
+                matchIndicator = `<span class="text-xs text-green-600">Email match</span>`;
+              } else if (employee.name.toLowerCase().includes(queryLower)) {
+                matchIndicator = `<span class="text-xs text-purple-600">Name match</span>`;
+              }
+              
               item.innerHTML = `
                 <div class="w-10 h-10 rounded-full border-2 border-gray-300 bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
                   <span class="text-sm font-bold text-gray-600">${employee.name.split(' ').map(n => n[0]).join('').substring(0, 2)}</span>
@@ -616,8 +737,10 @@
                   <div class="font-medium truncate">${employee.name}</div>
                   <div class="text-sm text-gray-500">${employee.designation}</div>
                   <div class="text-sm text-gray-500 truncate font-mono">${employee.ldap}</div>
+                  ${matchIndicator}
                 </div>`;
               item.addEventListener("click", () => {
+                console.log(`🎯 Selected: ${employee.name} (${employee.ldap})`);
                 searchInput.value = employee.name;
                 suggestions.classList.add("hidden");
                 renderConnectionInterface(employee);
@@ -626,6 +749,7 @@
             });
             suggestions.classList.remove("hidden");
           } else {
+            console.log(`❌ No search results found for "${searchTerm}"`);
             suggestions.classList.add("hidden");
           }
         });
@@ -704,13 +828,18 @@
                 }
               });
               
+              // Clear pending changes and refresh the interface to show updated connections
+              pendingChanges = {};
+              saveBtn.classList.add("hidden");
+              
+              // Refresh the connection interface to show the newly saved connections
+              setTimeout(() => {
+                renderConnectionInterface(selectedGoogleEmployee);
+              }, 1000);
+              
             } else {
               throw new Error(result.error || `Server responded with status ${response.status}`);
             }
-            
-            // Clear pending changes
-            pendingChanges = {};
-            saveBtn.classList.add("hidden");
             
           } catch (error) {
             console.error('Save error:', error);
@@ -729,99 +858,21 @@
         });
       }
 
-      // Enhanced initialization - ensures QT team is always loaded
       async function init() {
-        console.log('🚀 Initializing Declare page...');
+        console.log('🚀 Initializing Enhanced Declare page...');
         
-        // Always initialize with your hardcoded QT team first
-        coreTeam = [
-          {
-            ldap: 'lihis',
-            name: 'Lihi Segev',
-            email: 'lihis@qualitestgroup.com',
-            department: 'Account Management and Delivery',
-            designation: 'Executive Vice President',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: [],
-            avatar: "https://i.pravatar.cc/150?u=lihis"
-          },
-          {
-            ldap: 'a.bagade',
-            name: 'Abhijeet Bagade',
-            email: 'a.bagade@qualitestgroup.com',
-            department: 'Account Management and Delivery',
-            designation: 'Vice President',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: [],
-            avatar: "https://i.pravatar.cc/150?u=a.bagade"
-          },
-          {
-            ldap: 'omrinis',
-            name: 'Omri Nissim',
-            email: 'omrinis@qualitestgroup.com',
-            department: 'Account Management and Delivery',
-            designation: 'Vice President',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: [],
-            avatar: "https://i.pravatar.cc/150?u=omrinis"
-          },
-          {
-            ldap: 'kobi.kol',
-            name: 'Kobi Kol',
-            email: 'kobi.kol@Qualitest.com',
-            department: 'Account Management and Delivery',
-            designation: 'Associate Vice President',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: [],
-            avatar: "https://i.pravatar.cc/150?u=kobi.kol"
-          },
-          {
-            ldap: 'jillian.orrico',
-            name: 'Jillian OrRico',
-            email: 'jillian.orrico@qualitestgroup.com',
-            department: 'Sales',
-            designation: 'Vice President',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: [],
-            avatar: "https://i.pravatar.cc/150?u=jillian.orrico"
-          },
-          {
-            ldap: 'michael.bush',
-            name: 'Michael Bush',
-            email: 'michael.bush@qualitestgroup.com',
-            department: 'Account Management and Delivery',
-            designation: 'Associate Vice President',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: [],
-            avatar: "https://i.pravatar.cc/150?u=michael.bush"
-          },
-          {
-            ldap: 'mayank.arya',
-            name: 'Mayank Arya',
-            email: 'mayank.arya@qualitestgroup.com',
-            department: 'Account Management and Delivery',
-            designation: 'Associate Vice President',
-            company: 'Qualitest',
-            organisation: 'Qualitest',
-            connections: [],
-            avatar: "https://i.pravatar.cc/150?u=mayank.arya"
-          }
-        ];
+        // Initialize QT team data
+        coreTeam = qtTeamData;
         
-        // Now load data from Flask API
-        await loadFlaskData();
+        // Load Google employees
+        await fetchGoogleEmployees();
+        
+        // Setup functionality
         setupSearch();
         setupSaveButton();
         lucide.createIcons();
         
-        console.log('Initialized with:', googleEmployees.length, 'Google employees,', coreTeam.length, 'QT team members');
-        console.log('QT Team:', coreTeam.map(qt => qt.name));
+        console.log('✅ Initialized with:', googleEmployees.length, 'Google employees,', coreTeam.length, 'QT team members');
       }
 
       // Initialize when DOM is ready
