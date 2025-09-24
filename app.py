@@ -188,23 +188,26 @@ class OptimizedGoogleSheetsConnector:
         # Sample data that matches your actual Google Sheets columns and some real data
         sample_data = [
             ["Name", "Position", "Department", "Country", "LDAP", "MOMA URL", "Manager Email", "MOMA Photo URL"],
+            
             # Real employees from your sheet
             ["Niko Repo", "CSRM Data Center Security Manager", "Operations - CSRM", "Finland", "nrepo", "", "", ""],
             ["Ashwin Kumar", "Senior Engineering Manager", "Engineering", "India", "ashwink", "", "sarah.wilson@google.com", ""],
             ["Chanda", "Support Team - GL", "Engineering - Core ML Infra", "N/A", "cdangi", "", "mutthar@google.com", ""],
             ["Hacker", "Analyst", "Engineering - Core ML Infra", "N/A", "hackerj", "", "ashwink@google.com", ""],
             ["Agave", "Earth Platforms Developer Advocate", "Engineering - Earth Platforms", "N/A", "agv", "", "ryanbateman@google.com", ""],
+            
             # Managers
             ["Sarah Wilson", "VP Engineering", "Engineering", "USA", "sarah.wilson", "", "", ""],
             ["Mutthar", "Manager", "Engineering - Core ML Infra", "N/A", "mutthar", "", "sarah.wilson@google.com", ""],
+            
             # QT Team members
-            ["Lihi Segev", "Engineering Manager", "Engineering", "Israel", "lihi.segev", "", "", ""],
-            ["Abhijeet Bagade", "Product Manager", "Product", "India", "abhijeet.bagade", "", "", ""],
-            ["Omri Nissim", "Senior Developer", "Engineering", "Israel", "omri.nissim", "", "", ""],
-            ["Kobi Kol", "Operations Manager", "Operations", "Israel", "kobi.kol", "", "", ""],
-            ["Jillian OrRico", "Sales Director", "Sales", "USA", "jillian.orrico", "", "", ""],
-            ["Michael Bush", "Marketing Manager", "Marketing", "USA", "michael.bush", "", "", ""],
-            ["Mayank Arya", "Technical Lead", "Engineering", "India", "mayank.arya", "", "", ""],
+            ["Lihi Segev", "Executive Vice President", "Account Management and Delivery", "Israel", "lihis", "", "", ""],
+            ["Abhijeet Bagade", "Vice President", "Account Management and Delivery", "UK", "a.bagade", "", "", ""],
+            ["Omri Nissim", "Vice President", "Account Management and Delivery", "Israel", "omrinis", "", "", ""],
+            ["Kobi Kol", "Associate Vice President", "Account Management and Delivery", "Israel", "kobi.kol", "", "", ""],
+            ["Jillian OrRico", "Vice President", "Sales", "USA", "jillian.orrico", "", "", ""],
+            ["Michael Bush", "Associate Vice President", "Account Management and Delivery", "USA", "michael.bush", "", "", ""],
+            ["Mayank Arya", "Associate Vice President", "Account Management and Delivery", "UK", "mayank.arya", "", "", ""],
         ]
         
         df = pd.DataFrame(sample_data[1:], columns=sample_data[0])
@@ -1110,48 +1113,260 @@ def get_stats():
 
 # Connection management (optimized)
 @app.route('/api/batch-update-connections', methods=['POST'])
-def batch_update_connections():
-    """Optimized connection updates"""
+def batch_update_connections_fixed():
+    """FIXED: Enhanced connection updates that actually write to Google Sheets"""
     try:
         data = request.get_json()
         google_ldap = data.get('googleLdap')
         connections = data.get('connections', {})
+        declared_by = data.get('declaredBy', 'Qonnect User')
         
-        # FIXED: Actually update the connections in the employee data
+        logger.info(f"🎯 Connection update request:")
+        logger.info(f"  Google LDAP: {google_ldap}")
+        logger.info(f"  Connections: {len(connections)} items")
+        logger.info(f"  Data: {connections}")
+        
+        if not google_ldap or not connections:
+            logger.error("❌ Missing required data")
+            return jsonify({
+                'success': False, 
+                'error': 'Missing required data (googleLdap or connections)'
+            }), 400
+        
+        # Update in-memory data (existing functionality)
+        logger.info("💾 Updating in-memory data...")
         google_employee = get_employee_by_ldap(google_ldap)
         if google_employee:
-            # Initialize connections if not exists
             if 'connections' not in google_employee:
                 google_employee['connections'] = []
             
-            # Update connections
             for qt_ldap, strength in connections.items():
-                # Find existing connection
                 existing_conn = next((conn for conn in google_employee['connections'] 
                                     if conn.get('ldap') == qt_ldap), None)
                 
                 if existing_conn:
                     existing_conn['connectionStrength'] = strength
+                    logger.info(f"  ✏️ Updated: {qt_ldap} -> {strength}")
                 else:
-                    # Add new connection
-                    qt_employee = get_employee_by_ldap(qt_ldap)
+                    qt_employee = next((emp for emp in core_team if emp.get('ldap') == qt_ldap), None)
                     if qt_employee:
                         google_employee['connections'].append({
                             'ldap': qt_ldap,
                             'name': qt_employee.get('name'),
                             'connectionStrength': strength
                         })
+                        logger.info(f"  ➕ Added: {qt_ldap} -> {strength}")
+        
+        logger.info("✅ In-memory data updated")
+        
+        # FIXED: Direct Google Sheets writing without relying on sheet_writer object
+        logger.info("📝 Writing directly to Google Sheets...")
+        try:
+            # Create a fresh connector instance
+            from google.oauth2.service_account import Credentials
+            import gspread
+            import os
+            import json
+            from datetime import datetime
+            
+            # Authenticate directly
+            if os.path.exists(GOOGLE_SHEETS_CONFIG['service_account_file']):
+                creds = Credentials.from_service_account_file(
+                    GOOGLE_SHEETS_CONFIG['service_account_file'],
+                    scopes=GOOGLE_SHEETS_CONFIG['scopes']
+                )
+            elif 'GOOGLE_SERVICE_ACCOUNT_JSON' in os.environ:
+                service_account_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON'])
+                creds = Credentials.from_service_account_info(
+                    service_account_info,
+                    scopes=GOOGLE_SHEETS_CONFIG['scopes']
+                )
+            else:
+                raise Exception("No credentials available")
+            
+            # Connect to spreadsheet
+            client = gspread.authorize(creds)
+            spreadsheet = client.open_by_key(GOOGLE_SHEETS_CONFIG['spreadsheet_id'])
+            logger.info(f"✅ Connected to spreadsheet: {spreadsheet.title}")
+            
+            # Get or create Connections sheet
+            try:
+                connections_sheet = spreadsheet.worksheet('Connections')
+                logger.info("✅ Found existing Connections sheet")
+            except gspread.WorksheetNotFound:
+                logger.info("📄 Creating new Connections sheet...")
+                connections_sheet = spreadsheet.add_worksheet(title='Connections', rows=1000, cols=12)
+                
+                # Add headers
+                headers = [
+                    'Timestamp', 'Google Employee LDAP', 'Google Employee Name', 
+                    'Google Employee Email', 'Google Employee Department',
+                    'QT Employee LDAP', 'QT Employee Name', 'QT Employee Email', 
+                    'QT Employee Department', 'Connection Strength', 'Declared By', 'Notes'
+                ]
+                connections_sheet.append_row(headers)
+                logger.info("✅ Added headers to new sheet")
+            
+            # Prepare data rows
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            rows_to_add = []
+            successful_connections = []
+            
+            # Get Google employee details with fallback
+            if not google_employee:
+                google_employee = {
+                    'ldap': google_ldap,
+                    'name': google_ldap.replace('.', ' ').title(),
+                    'email': f"{google_ldap}@google.com",
+                    'department': 'Unknown'
+                }
+            
+            for qt_ldap, strength in connections.items():
+                # Find QT employee with fallback
+                qt_emp = next((emp for emp in core_team if emp.get('ldap') == qt_ldap), None)
+                if not qt_emp:
+                    qt_emp = {
+                        'ldap': qt_ldap,
+                        'name': qt_ldap.replace('.', ' ').title(),
+                        'email': f"{qt_ldap}@qualitest.com",
+                        'department': 'QT Team'
+                    }
+                
+                row_data = [
+                    timestamp,
+                    google_employee.get('ldap', ''),
+                    google_employee.get('name', ''),
+                    google_employee.get('email', ''),
+                    google_employee.get('department', ''),
+                    qt_emp.get('ldap', ''),
+                    qt_emp.get('name', ''),
+                    qt_emp.get('email', ''),
+                    qt_emp.get('department', ''),
+                    strength.title(),
+                    declared_by,
+                    f"Connection declared via Qonnect app"
+                ]
+                
+                rows_to_add.append(row_data)
+                successful_connections.append(f"{qt_emp.get('name')} ({strength})")
+                logger.info(f"  📝 Prepared row for {qt_emp.get('name')}")
+            
+            # Write all rows to Google Sheets
+            if rows_to_add:
+                connections_sheet.append_rows(rows_to_add)
+                logger.info(f"🎉 Successfully wrote {len(rows_to_add)} rows to Google Sheets!")
+                
+                return jsonify({
+                    'success': True,
+                    'updated_count': len(connections),
+                    'message': f"Successfully saved {len(rows_to_add)} connections to Google Sheets 'Connections' tab: {', '.join(successful_connections)}",
+                    'google_employee': google_ldap,
+                    'written_to_sheets': True,
+                    'sheets_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid={connections_sheet.id}",
+                    'timestamp': datetime.now().isoformat()
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'No valid connections to save'
+                }), 400
+                
+        except Exception as sheets_error:
+            logger.error(f"❌ Google Sheets write error: {sheets_error}")
+            logger.error(f"Error type: {type(sheets_error).__name__}")
+            logger.error(f"Error details: {str(sheets_error)}")
+            
+            # Return success for in-memory but show sheets error
+            return jsonify({
+                'success': True,
+                'updated_count': len(connections),
+                'message': f'Connections updated in memory. Google Sheets error: {str(sheets_error)}',
+                'google_employee': google_ldap,
+                'written_to_sheets': False,
+                'sheets_error': str(sheets_error),
+                'timestamp': datetime.now().isoformat(),
+                'debug': {
+                    'error_type': type(sheets_error).__name__,
+                    'spreadsheet_id': GOOGLE_SHEETS_CONFIG['spreadsheet_id'],
+                    'has_credentials': os.path.exists(GOOGLE_SHEETS_CONFIG['service_account_file'])
+                }
+            })
+        
+    except Exception as e:
+        logger.error(f"❌ API endpoint error: {e}")
+        return jsonify({
+            'success': False, 
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/test-sheet-write', methods=['POST'])
+def test_sheet_write():
+    """Test endpoint to verify Google Sheets writing works"""
+    try:
+        from google.oauth2.service_account import Credentials
+        import gspread
+        import os
+        import json
+        from datetime import datetime
+        
+        logger.info("🧪 Testing direct Google Sheets write...")
+        
+        # Authenticate
+        if os.path.exists(GOOGLE_SHEETS_CONFIG['service_account_file']):
+            creds = Credentials.from_service_account_file(
+                GOOGLE_SHEETS_CONFIG['service_account_file'],
+                scopes=GOOGLE_SHEETS_CONFIG['scopes']
+            )
+        else:
+            return jsonify({'success': False, 'error': 'No credentials file found'}), 500
+        
+        # Connect
+        client = gspread.authorize(creds)
+        spreadsheet = client.open_by_key(GOOGLE_SHEETS_CONFIG['spreadsheet_id'])
+        
+        # Get/create sheet
+        try:
+            sheet = spreadsheet.worksheet('Connections')
+        except:
+            sheet = spreadsheet.add_worksheet(title='Connections', rows=100, cols=10)
+            sheet.append_row(['Timestamp', 'Test', 'Data', 'From', 'API'])
+        
+        # Write test data
+        test_row = [datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'TEST', 'ashwink', 'lihi.segev', 'strong', 'API Test']
+        sheet.append_row(test_row)
         
         return jsonify({
             'success': True,
-            'updated_count': len(connections),
-            'message': 'Connections updated successfully',
-            'google_employee': google_ldap
+            'message': 'Test write successful!',
+            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid={sheet.id}"
         })
         
     except Exception as e:
-        logger.error(f"Connection update error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"Test write failed: {e}")
+        return jsonify({
+            'success': False, 
+            'error': str(e)
+        }), 500
+
+
+print("""
+🔧 FIXED ENDPOINT READY!
+
+To fix your Google Sheets writing issue:
+
+1. Replace your /api/batch-update-connections endpoint with the fixed version above
+2. Add the test endpoint 
+3. Restart your Flask app
+4. Test with: curl -X POST http://localhost:8080/api/test-sheet-write
+
+The fixed version:
+✅ Creates fresh Google Sheets connection each time
+✅ Handles authentication directly 
+✅ Creates Connections sheet if missing
+✅ Provides detailed error logging
+✅ Has fallback data handling
+""")
 
 @app.route('/api/connections/<employee_ldap>')
 def get_connections(employee_ldap):
@@ -1236,147 +1451,232 @@ def internal_error(error):
 # Replace the debug endpoint in your app.py with this fixed version:
 
 @app.route('/api/debug-google-sheets')
-def debug_google_sheets():
-    """Debug endpoint to test Google Sheets connectivity and permissions"""
+def debug_google_sheets_enhanced():
+    """Enhanced debug endpoint to test Google Sheets connectivity and permissions"""
     try:
-        # Test if sheet_writer exists
-        if 'sheet_writer' not in globals():
-            return jsonify({
-                'status': 'error',
-                'issue': 'Google Sheets writer not initialized',
-                'fix': 'Add the OptimizedGoogleSheetsWriter class and initialize sheet_writer'
-            }), 500
+        logger.info("🔍 Starting enhanced Google Sheets debug...")
         
-        # Test basic authentication
+        debug_info = {
+            'timestamp': datetime.now().isoformat(),
+            'config': {
+                'spreadsheet_id': GOOGLE_SHEETS_CONFIG['spreadsheet_id'],
+                'spreadsheet_url': GOOGLE_SHEETS_CONFIG['spreadsheet_url'],
+                'service_account_file': GOOGLE_SHEETS_CONFIG['service_account_file'],
+                'file_exists': os.path.exists(GOOGLE_SHEETS_CONFIG['service_account_file']),
+                'env_var_exists': 'GOOGLE_SERVICE_ACCOUNT_JSON' in os.environ
+            },
+            'tests': {},
+            'recommendations': []
+        }
+        
+        # Test 1: Basic authentication
+        logger.info("🔐 Testing authentication...")
         if not sheet_writer.connector.client:
-            if not sheet_writer.connector.authenticate():
+            auth_success = sheet_writer.connector.authenticate()
+            debug_info['tests']['authentication'] = {
+                'success': auth_success,
+                'message': 'Authentication successful' if auth_success else 'Authentication failed'
+            }
+            
+            if not auth_success:
+                debug_info['recommendations'].append('Check your credentials.json file or GOOGLE_SERVICE_ACCOUNT_JSON environment variable')
                 return jsonify({
                     'status': 'error',
                     'issue': 'Authentication failed',
-                    'fix': 'Check your credentials.json file and ensure it exists'
+                    'debug': debug_info
                 }), 500
+        else:
+            debug_info['tests']['authentication'] = {
+                'success': True,
+                'message': 'Already authenticated'
+            }
         
-        # Test spreadsheet connection
+        # Test 2: Spreadsheet connection
+        logger.info("📊 Testing spreadsheet connection...")
         if not sheet_writer.connector.connect_to_spreadsheet():
-            return jsonify({
-                'status': 'error', 
-                'issue': 'Cannot connect to spreadsheet',
-                'fix': 'Verify spreadsheet ID and service account permissions'
-            }), 500
-        
-        # Test creating/accessing Connections sheet
-        try:
-            connections_sheet = sheet_writer.get_or_create_connections_sheet()
-            if not connections_sheet:
-                return jsonify({
-                    'status': 'error',
-                    'issue': 'Cannot create or access Connections sheet',
-                    'fix': 'Service account needs Editor permissions, not just Viewer'
-                }), 500
-        except Exception as e:
+            debug_info['tests']['spreadsheet_connection'] = {
+                'success': False,
+                'message': 'Cannot connect to spreadsheet'
+            }
+            debug_info['recommendations'].append('Share the Google Sheet with your service account email')
+            debug_info['recommendations'].append('Verify the spreadsheet ID is correct')
             return jsonify({
                 'status': 'error',
-                'issue': f'Connections sheet error: {str(e)}',
-                'fix': 'Ensure service account has Editor permissions on the Google Sheet'
+                'issue': 'Cannot connect to spreadsheet',
+                'debug': debug_info
             }), 500
         
-        # Test write capability with a simple test row (skip employee validation for debug)
+        debug_info['tests']['spreadsheet_connection'] = {
+            'success': True,
+            'message': f'Connected to: {sheet_writer.connector.spreadsheet.title}',
+            'available_sheets': [ws.title for ws in sheet_writer.connector.spreadsheet.worksheets()]
+        }
+        
+        # Test 3: Connections sheet access/creation
+        logger.info("📋 Testing Connections sheet access...")
+        connections_sheet = sheet_writer.get_or_create_connections_sheet()
+        if not connections_sheet:
+            debug_info['tests']['connections_sheet'] = {
+                'success': False,
+                'message': 'Cannot access or create Connections sheet'
+            }
+            debug_info['recommendations'].append('Ensure service account has Editor permissions, not just Viewer')
+            return jsonify({
+                'status': 'error',
+                'issue': 'Cannot access Connections sheet',
+                'debug': debug_info
+            }), 500
+        
+        debug_info['tests']['connections_sheet'] = {
+            'success': True,
+            'message': 'Connections sheet accessible',
+            'sheet_id': connections_sheet.id,
+            'sheet_title': connections_sheet.title,
+            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid={connections_sheet.id}"
+        }
+        
+        # Test 4: Write capability test
+        logger.info("✏️ Testing write capability...")
         try:
-            # Write a simple test row directly to the sheet
+            # Write a simple test row
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             test_row = [
                 timestamp,
                 'debug.test',
                 'Debug Test User',
                 'debug.test@google.com',
+                'Test Department',
                 'debug.qt',
                 'Debug QT User',
-                'debug.qt@qualitest.com',
+                'debug.qt@olenick.com',
+                'QT Test',
                 'Medium',
                 'Debug System',
-                'Debug connectivity test'
+                'Automated debug test - safe to delete'
             ]
             
             connections_sheet.append_row(test_row)
-            logger.info("Successfully wrote debug test row to Google Sheets")
+            logger.info("✅ Write test successful!")
+            
+            debug_info['tests']['write_capability'] = {
+                'success': True,
+                'message': 'Write test successful - test row added to Connections sheet',
+                'test_data_written': True
+            }
             
             return jsonify({
                 'status': 'success',
-                'message': 'Google Sheets integration is working correctly!',
-                'details': {
-                    'authentication': 'OK',
-                    'spreadsheet_access': 'OK', 
-                    'connections_sheet': 'OK',
-                    'write_permissions': 'OK',
-                    'test_record_written': 'Yes',
-                    'sheet_id': connections_sheet.id,
-                    'sheet_title': connections_sheet.title
-                }
+                'message': 'All Google Sheets tests passed! Your integration is working correctly.',
+                'debug': debug_info,
+                'next_steps': [
+                    'Try declaring connections from the declare.html page',
+                    'Check the Connections sheet for new data',
+                    'The debug test row can be safely deleted'
+                ]
             })
                 
-        except Exception as e:
+        except Exception as write_error:
+            debug_info['tests']['write_capability'] = {
+                'success': False,
+                'message': f'Write test failed: {str(write_error)}'
+            }
+            
+            if "permission" in str(write_error).lower():
+                debug_info['recommendations'].append('Service account needs Editor permissions to write data')
+            
             return jsonify({
                 'status': 'error',
-                'issue': f'Write test failed: {str(e)}',
-                'fix': 'Ensure service account has Editor permissions and proper API access'
+                'issue': 'Write test failed',
+                'debug': debug_info
             }), 500
         
     except Exception as e:
+        logger.error(f"❌ Debug endpoint error: {e}")
         return jsonify({
             'status': 'error',
-            'issue': f'Unexpected error: {str(e)}',
-            'fix': 'Check logs for detailed error information'
+            'issue': f'Debug failed: {str(e)}',
+            'error_type': type(e).__name__,
+            'timestamp': datetime.now().isoformat()
         }), 500
 
+
 class OptimizedGoogleSheetsWriter:
-    """Enhanced connector that can both read and write to Google Sheets"""
+    """Enhanced connector that can both read and write to Google Sheets - FIXED VERSION"""
     
     def __init__(self, config):
         self.config = config
         self.connector = OptimizedGoogleSheetsConnector(config)
+        self._connections_sheet = None
         
     def get_or_create_connections_sheet(self):
-        """Get the Connections sheet or create it if it doesn't exist"""
+        """FIXED: Get the Connections sheet or create it if it doesn't exist"""
         try:
+            # Use cached sheet if available
+            if self._connections_sheet:
+                return self._connections_sheet
+                
             if not self.connector.spreadsheet:
                 if not self.connector.connect_to_spreadsheet():
+                    logger.error("❌ Cannot connect to spreadsheet")
                     return None
+            
+            logger.info("🔍 Looking for 'Connections' sheet...")
             
             # Try to get existing Connections sheet
             try:
                 connections_sheet = self.connector.spreadsheet.worksheet('Connections')
-                logger.info("Found existing 'Connections' sheet")
+                logger.info("✅ Found existing 'Connections' sheet")
+                self._connections_sheet = connections_sheet
                 return connections_sheet
-            except:
-                logger.info("'Connections' sheet not found, creating new one...")
-                
-                # Create new sheet
+            except gspread.WorksheetNotFound:
+                logger.info("📄 'Connections' sheet not found, will create new one...")
+            except Exception as e:
+                logger.warning(f"⚠️ Error accessing Connections sheet: {e}")
+            
+            # Create new sheet
+            try:
+                logger.info("🆕 Creating new 'Connections' sheet...")
                 connections_sheet = self.connector.spreadsheet.add_worksheet(
                     title='Connections', 
                     rows=1000, 
-                    cols=10
+                    cols=12
                 )
                 
-                # Add headers
+                # Add comprehensive headers
                 headers = [
                     'Timestamp',
                     'Google Employee LDAP',
                     'Google Employee Name', 
                     'Google Employee Email',
+                    'Google Employee Department',
                     'QT Employee LDAP',
                     'QT Employee Name',
                     'QT Employee Email', 
+                    'QT Employee Department',
                     'Connection Strength',
                     'Declared By',
                     'Notes'
                 ]
                 
                 connections_sheet.append_row(headers)
-                logger.info("Created new 'Connections' sheet with headers")
+                logger.info("✅ Created new 'Connections' sheet with headers")
+                self._connections_sheet = connections_sheet
                 return connections_sheet
                 
+            except Exception as create_error:
+                error_msg = str(create_error)
+                logger.error(f"❌ Failed to create Connections sheet: {error_msg}")
+                
+                if "permission" in error_msg.lower():
+                    logger.error("💡 SOLUTION: Service account needs Editor permissions!")
+                    logger.error("📧 Share the Google Sheet with your service account email")
+                elif "quota" in error_msg.lower():
+                    logger.error("💡 SOLUTION: API quota exceeded, wait a moment")
+                
+                return None
+                
         except Exception as e:
-            logger.error(f"Error getting/creating Connections sheet: {e}")
+            logger.error(f"❌ Unexpected error in get_or_create_connections_sheet: {e}")
             return None
     
     def write_connection_to_sheet(self, google_employee_ldap, qt_employee_ldap, connection_strength, declared_by="System"):
@@ -1386,13 +1686,24 @@ class OptimizedGoogleSheetsWriter:
             if not connections_sheet:
                 return False
             
-            # Get employee details
+            # Get employee details with better fallback handling
             google_emp = get_employee_by_ldap(google_employee_ldap)
-            qt_emp = next((emp for emp in core_team if emp.get('ldap') == qt_employee_ldap), None)
+            if not google_emp:
+                google_emp = {
+                    'ldap': google_employee_ldap,
+                    'name': google_employee_ldap.replace('.', ' ').title(),
+                    'email': f"{google_employee_ldap}@google.com",
+                    'department': 'Unknown'
+                }
             
-            if not google_emp or not qt_emp:
-                logger.error(f"Employee not found: Google={google_employee_ldap}, QT={qt_employee_ldap}")
-                return False
+            qt_emp = next((emp for emp in core_team if emp.get('ldap') == qt_employee_ldap), None)
+            if not qt_emp:
+                qt_emp = {
+                    'ldap': qt_employee_ldap,
+                    'name': qt_employee_ldap.replace('.', ' ').title(),
+                    'email': f"{qt_employee_ldap}@olenick.com",
+                    'department': 'QT Team'
+                }
             
             # Prepare row data
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1401,9 +1712,11 @@ class OptimizedGoogleSheetsWriter:
                 google_emp.get('ldap', ''),
                 google_emp.get('name', ''),
                 google_emp.get('email', ''),
+                google_emp.get('department', ''),
                 qt_emp.get('ldap', ''),
                 qt_emp.get('name', ''),
                 qt_emp.get('email', ''),
+                qt_emp.get('department', ''),
                 connection_strength.title(),
                 declared_by,
                 f"Connection declared via Qonnect app"
@@ -1411,58 +1724,107 @@ class OptimizedGoogleSheetsWriter:
             
             # Write to sheet
             connections_sheet.append_row(row_data)
-            logger.info(f"Successfully wrote connection: {google_emp.get('name')} <-> {qt_emp.get('name')} ({connection_strength})")
+            logger.info(f"✅ Successfully wrote connection: {google_emp.get('name')} <-> {qt_emp.get('name')} ({connection_strength})")
             return True
             
         except Exception as e:
-            logger.error(f"Error writing connection to sheet: {e}")
+            logger.error(f"❌ Error writing connection to sheet: {e}")
             return False
     
     def write_batch_connections_to_sheet(self, google_employee_ldap, connections_dict, declared_by="System"):
-        """Write multiple connections to the Google Sheet"""
+        """FIXED: Write multiple connections to the Google Sheet"""
         try:
+            logger.info(f"📝 Starting batch write: {len(connections_dict)} connections for {google_employee_ldap}")
+            
             connections_sheet = self.get_or_create_connections_sheet()
             if not connections_sheet:
-                return False, "Could not access Connections sheet"
+                return False, "Could not access or create Connections sheet"
             
+            logger.info("✅ Connections sheet accessible")
+            
+            # Get Google employee with enhanced fallback
             google_emp = get_employee_by_ldap(google_employee_ldap)
             if not google_emp:
-                return False, f"Google employee {google_employee_ldap} not found"
+                logger.warning(f"⚠️ Google employee {google_employee_ldap} not found in data")
+                google_emp = {
+                    'ldap': google_employee_ldap,
+                    'name': google_employee_ldap.replace('.', ' ').title(),
+                    'email': f"{google_employee_ldap}@google.com",
+                    'department': 'Unknown'
+                }
+            
+            logger.info(f"📋 Google employee: {google_emp.get('name')} ({google_emp.get('ldap')})")
             
             # Prepare batch data
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             rows_to_add = []
             successful_connections = []
             
+            logger.info(f"🔄 Processing {len(connections_dict)} connections...")
+            
             for qt_ldap, strength in connections_dict.items():
+                logger.info(f"  Processing: {qt_ldap} -> {strength}")
+                
+                # Find QT employee with enhanced fallback
                 qt_emp = next((emp for emp in core_team if emp.get('ldap') == qt_ldap), None)
-                if qt_emp:
-                    row_data = [
-                        timestamp,
-                        google_emp.get('ldap', ''),
-                        google_emp.get('name', ''),
-                        google_emp.get('email', ''),
-                        qt_emp.get('ldap', ''),
-                        qt_emp.get('name', ''),
-                        qt_emp.get('email', ''),
-                        strength.title(),
-                        declared_by,
-                        f"Batch connection declared via Qonnect app"
-                    ]
-                    rows_to_add.append(row_data)
-                    successful_connections.append(f"{qt_emp.get('name')} ({strength})")
+                if not qt_emp:
+                    logger.warning(f"    ⚠️ QT employee {qt_ldap} not found in core_team")
+                    qt_emp = {
+                        'ldap': qt_ldap,
+                        'name': qt_ldap.replace('.', ' ').title(),
+                        'email': f"{qt_ldap}@olenick.com",
+                        'department': 'QT Team'
+                    }
+                
+                logger.info(f"    📋 QT employee: {qt_emp.get('name')}")
+                
+                row_data = [
+                    timestamp,
+                    google_emp.get('ldap', ''),
+                    google_emp.get('name', ''),
+                    google_emp.get('email', ''),
+                    google_emp.get('department', ''),
+                    qt_emp.get('ldap', ''),
+                    qt_emp.get('name', ''),
+                    qt_emp.get('email', ''),
+                    qt_emp.get('department', ''),
+                    strength.title(),
+                    declared_by,
+                    f"Batch connection declared via Qonnect app"
+                ]
+                
+                rows_to_add.append(row_data)
+                successful_connections.append(f"{qt_emp.get('name')} ({strength})")
+                logger.info(f"    ✅ Row prepared for {qt_emp.get('name')}")
             
             if rows_to_add:
-                # Write all rows at once for better performance
-                connections_sheet.append_rows(rows_to_add)
-                logger.info(f"Successfully wrote {len(rows_to_add)} connections for {google_emp.get('name')}")
-                return True, f"Successfully saved {len(rows_to_add)} connections: {', '.join(successful_connections)}"
+                logger.info(f"📤 Writing {len(rows_to_add)} rows to Google Sheets...")
+                try:
+                    # Write all rows at once for better performance
+                    connections_sheet.append_rows(rows_to_add)
+                    logger.info(f"🎉 Successfully wrote {len(rows_to_add)} connections to Google Sheets!")
+                    
+                    success_message = f"Successfully saved {len(rows_to_add)} connections to Google Sheets 'Connections' tab: {', '.join(successful_connections)}"
+                    return True, success_message
+                    
+                except Exception as write_error:
+                    error_msg = str(write_error)
+                    logger.error(f"❌ Write operation failed: {error_msg}")
+                    
+                    if "permission" in error_msg.lower():
+                        return False, "Permission denied - service account needs Editor access to the Google Sheet"
+                    elif "quota" in error_msg.lower():
+                        return False, "API quota exceeded - please wait a moment and try again"
+                    elif "not found" in error_msg.lower():
+                        return False, "Spreadsheet or sheet not found - check your configuration"
+                    else:
+                        return False, f"Write failed: {error_msg}"
             else:
                 return False, "No valid connections to save"
                 
         except Exception as e:
-            logger.error(f"Error writing batch connections: {e}")
-            return False, f"Error saving to Google Sheets: {str(e)}"
+            logger.error(f"❌ Unexpected error in batch write: {e}")
+            return False, f"Unexpected error: {str(e)}"
 
 # Initialize the writer
 sheet_writer = OptimizedGoogleSheetsWriter(GOOGLE_SHEETS_CONFIG)
@@ -1470,17 +1832,32 @@ sheet_writer = OptimizedGoogleSheetsWriter(GOOGLE_SHEETS_CONFIG)
 # Enhanced API endpoint for batch connection updates
 @app.route('/api/batch-update-connections', methods=['POST'])
 def batch_update_connections_enhanced():
-    """Enhanced connection updates that write to Google Sheets"""
+    """FIXED: Enhanced connection updates that write to Google Sheets"""
     try:
         data = request.get_json()
         google_ldap = data.get('googleLdap')
         connections = data.get('connections', {})
         declared_by = data.get('declaredBy', 'Qonnect User')
         
+        logger.info(f"🎯 Connection update request received:")
+        logger.info(f"  Google LDAP: {google_ldap}")
+        logger.info(f"  Connections: {len(connections)} items")
+        logger.info(f"  Data: {connections}")
+        
         if not google_ldap or not connections:
-            return jsonify({'success': False, 'error': 'Missing required data'}), 400
+            logger.error("❌ Missing required data")
+            return jsonify({
+                'success': False, 
+                'error': 'Missing required data (googleLdap or connections)',
+                'received_data': {
+                    'googleLdap': google_ldap,
+                    'connections': connections,
+                    'declaredBy': declared_by
+                }
+            }), 400
         
         # Update in-memory data (existing functionality)
+        logger.info("💾 Updating in-memory data...")
         google_employee = get_employee_by_ldap(google_ldap)
         if google_employee:
             # Initialize connections if not exists
@@ -1495,6 +1872,7 @@ def batch_update_connections_enhanced():
                 
                 if existing_conn:
                     existing_conn['connectionStrength'] = strength
+                    logger.info(f"  ✏️ Updated existing connection: {qt_ldap} -> {strength}")
                 else:
                     # Add new connection
                     qt_employee = next((emp for emp in core_team if emp.get('ldap') == qt_ldap), None)
@@ -1504,8 +1882,12 @@ def batch_update_connections_enhanced():
                             'name': qt_employee.get('name'),
                             'connectionStrength': strength
                         })
+                        logger.info(f"  ➕ Added new connection: {qt_ldap} -> {strength}")
         
-        # Write to Google Sheets
+        logger.info("✅ In-memory data updated successfully")
+        
+        # Write to Google Sheets with enhanced error handling
+        logger.info("📝 Attempting to write to Google Sheets...")
         try:
             success, message = sheet_writer.write_batch_connections_to_sheet(
                 google_ldap, 
@@ -1514,27 +1896,33 @@ def batch_update_connections_enhanced():
             )
             
             if success:
+                logger.info(f"🎉 Google Sheets write successful!")
                 return jsonify({
                     'success': True,
                     'updated_count': len(connections),
                     'message': message,
                     'google_employee': google_ldap,
                     'written_to_sheets': True,
-                    'sheets_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid=CONNECTIONS_SHEET_ID"
+                    'sheets_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid=0",
+                    'timestamp': datetime.now().isoformat(),
+                    'connections_saved': connections
                 })
             else:
-                # Even if sheets write fails, return success for in-memory update
+                logger.warning(f"⚠️ Google Sheets write failed: {message}")
+                # Still return success for in-memory update
                 return jsonify({
                     'success': True,
                     'updated_count': len(connections),
                     'message': f'Connections updated in memory. Google Sheets error: {message}',
                     'google_employee': google_ldap,
                     'written_to_sheets': False,
-                    'sheets_error': message
+                    'sheets_error': message,
+                    'timestamp': datetime.now().isoformat(),
+                    'fallback_mode': True
                 })
                 
         except Exception as e:
-            logger.error(f"Google Sheets write error: {e}")
+            logger.error(f"❌ Google Sheets write error: {e}")
             # Still return success for in-memory update
             return jsonify({
                 'success': True,
@@ -1542,18 +1930,25 @@ def batch_update_connections_enhanced():
                 'message': f'Connections updated in memory. Google Sheets unavailable: {str(e)}',
                 'google_employee': google_ldap,
                 'written_to_sheets': False,
-                'sheets_error': str(e)
+                'sheets_error': str(e),
+                'timestamp': datetime.now().isoformat(),
+                'fallback_mode': True
             })
         
     except Exception as e:
-        logger.error(f"Connection update error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"❌ API endpoint error: {e}")
+        return jsonify({
+            'success': False, 
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 # New endpoint to view connections from Google Sheets
 @app.route('/api/connections-from-sheets')
 def get_connections_from_sheets():
     """Get all connections from the Google Sheets Connections tab"""
     try:
+        logger.info("📖 Reading connections from Google Sheets...")
         connections_sheet = sheet_writer.get_or_create_connections_sheet()
         if not connections_sheet:
             return jsonify({'error': 'Could not access Connections sheet'}), 500
@@ -1561,14 +1956,17 @@ def get_connections_from_sheets():
         # Get all records
         records = connections_sheet.get_all_records()
         
+        logger.info(f"✅ Retrieved {len(records)} connection records")
+        
         return jsonify({
             'connections': records,
             'total_count': len(records),
-            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid={connections_sheet.id}"
+            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid={connections_sheet.id}",
+            'last_updated': datetime.now().isoformat()
         })
         
     except Exception as e:
-        logger.error(f"Error getting connections from sheets: {e}")
+        logger.error(f"❌ Error getting connections from sheets: {e}")
         return jsonify({'error': str(e)}), 500
 
 # New endpoint to get connection statistics
