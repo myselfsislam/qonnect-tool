@@ -150,7 +150,8 @@
           googleEmployees = data.map(emp => ({
             ldap: emp.ldap,
             email: emp.email || emp.ldap + '@google.com',
-            avatar: emp.avatar || `https://i.pravatar.cc/150?u=${emp.ldap}`,
+            // FIXED: Use MOMA Photo URL from sheet instead of placeholder
+            avatar: emp['MOMA Photo URL'] || emp.avatar || null,
             name: emp.name,
             company: emp.company || "GOOGLE",
             designation: emp.designation,
@@ -294,6 +295,21 @@
         console.log(`- QT team: ${coreTeam.length}`);
       }
 
+      // ADDED: Helper function to generate initials from name
+      function getInitials(name) {
+        if (!name) return 'NA';
+        return name
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase())
+          .join('')
+          .substring(0, 2); // Take only first 2 initials
+      }
+
+      // ADDED: Helper function to check if image URL is valid
+      function isValidImageUrl(url) {
+        return url && url.trim() !== '' && (url.startsWith('http://') || url.startsWith('https://'));
+      }
+
       function updateEmployeeMap() {
         employeeMap.clear();
         googleEmployees.forEach((e) => employeeMap.set(e.ldap, e));
@@ -315,10 +331,21 @@
         const borderClass = employee.company === "GOOGLE" ? "google-border" : "qt-border";
         card.className = `unified-card ${borderClass} ${className}`;
         
-        // Show avatar only for Google employees, not QT team members
+        // FIXED: Show avatar for Google employees using MOMA Photo URL or initials fallback
         let avatarHtml = '';
         if (employee.company === "GOOGLE") {
-          avatarHtml = `<img src="${employee.avatar || ""}" alt="${employee.name}" class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow">`;
+          if (isValidImageUrl(employee.avatar)) {
+            // Use actual photo from MOMA Photo URL
+            avatarHtml = `<img src="${employee.avatar}" alt="${employee.name}" class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow object-cover" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                         <div class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow bg-blue-500 text-white flex items-center justify-center font-bold text-lg" style="display:none;">
+                           ${getInitials(employee.name)}
+                         </div>`;
+          } else {
+            // Use initials as fallback
+            avatarHtml = `<div class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow bg-blue-500 text-white flex items-center justify-center font-bold text-lg">
+                           ${getInitials(employee.name)}
+                         </div>`;
+          }
         }
         
         card.innerHTML = `
@@ -337,17 +364,24 @@
       function createConnectionTooltip(path, onExpand) {
         const tooltip = document.createElement("div");
         tooltip.className = "tooltip flex justify-center";
-        const pathLength = path.length;
+        
+        // FIXED: Calculate actual connection steps - path length minus 1 (since path includes both endpoints)
+        let connectionSteps = 1; // Default to 1 step for direct connection
+        if (path && Array.isArray(path) && path.length > 0) {
+          connectionSteps = Math.max(1, path.length - 1); // Steps = nodes - 1
+        }
+        
+        console.log('Connection path:', path, 'Steps calculated:', connectionSteps);
 
         tooltip.innerHTML = `
                 <button class="btn connection-btn">
                     <i data-lucide="users" class="w-4 h-4"></i>
-                    <span class="connection-count">${pathLength}</span>
+                    <span class="connection-count">${connectionSteps}</span>
                 </button>
                 <div class="tooltip-content">
                     <div class="space-y-2">
                         <p class="text-sm font-semibold">
-                            Shortest Path Found (${pathLength} ${pathLength === 1 ? "step" : "steps"})
+                            Connection Path (${connectionSteps} ${connectionSteps === 1 ? "step" : "steps"})
                         </p>
                         <p class="text-xs muted italic pt-1">
                             Click to expand full hierarchy path.
@@ -426,60 +460,55 @@
 
           content.appendChild(hierarchyContainer);
 
-          // Show direct reports if the selected employee has any
+          // FIXED: Show direct reports with just total count, no individual cards
           const selectedNode = orgHierarchy.get(employee.ldap);
           if (selectedNode && selectedNode.reportees.length > 0) {
             const reportsSection = document.createElement("div");
             reportsSection.className = "mt-8 pt-6 border-t border-gray-200";
             
+            // Just show the count summary, no individual cards
+            const reportsContainer = document.createElement("div");
+            reportsContainer.className = "text-center";
+            
             const reportsTitle = document.createElement("div");
-            reportsTitle.className = "text-center text-sm font-semibold text-gray-600 mb-4";
-            reportsTitle.textContent = `${employee.name}'s Direct Reports (${selectedNode.reportees.length})`;
-            reportsSection.appendChild(reportsTitle);
+            reportsTitle.className = "text-lg font-semibold text-gray-700 mb-4 text-center";
+            reportsTitle.textContent = `${employee.name} manages ${selectedNode.reportees.length} direct reports`;
+            
+            // Group by department for breakdown
+            const departmentGroups = {};
+            selectedNode.reportees.forEach(reporteeNode => {
+              const dept = reporteeNode.employee.organisation || reporteeNode.employee.company || 'Other';
+              if (!departmentGroups[dept]) {
+                departmentGroups[dept] = [];
+              }
+              departmentGroups[dept].push(reporteeNode);
+            });
 
-            // Create Swiper for direct reports if there are many
-            if (selectedNode.reportees.length > 3) {
-              const swiperContainer = document.createElement("div");
-              swiperContainer.className = "reports-swiper swiper";
-              swiperContainer.innerHTML = `<div class="swiper-wrapper"></div>`;
-              const swiperWrapper = swiperContainer.querySelector(".swiper-wrapper");
-
-              selectedNode.reportees.forEach(reporteeNode => {
-                const slide = document.createElement("div");
-                slide.className = "swiper-slide";
-                const reporteeCard = createEmployeeCard(reporteeNode.employee, "scale-90 opacity-90");
-                slide.appendChild(reporteeCard);
-                swiperWrapper.appendChild(slide);
-              });
-
-              reportsSection.appendChild(swiperContainer);
-
-              // Initialize Swiper for reports
-              setTimeout(() => {
-                new Swiper(".reports-swiper", {
-                  spaceBetween: 16,
-                  slidesPerView: 1,
-                  centeredSlides: true,
-                  breakpoints: {
-                    640: { slidesPerView: 2, centeredSlides: false },
-                    1024: { slidesPerView: 3, centeredSlides: false },
-                    1280: { slidesPerView: 4, centeredSlides: false },
-                  },
-                });
-              }, 0);
-            } else {
-              // Simple grid for few reports
-              const reportsGrid = document.createElement("div");
-              reportsGrid.className = "flex flex-wrap justify-center gap-4";
+            // Show department breakdown if multiple departments
+            if (Object.keys(departmentGroups).length > 1) {
+              const breakdown = document.createElement("div");
+              breakdown.className = "mt-4 bg-gray-50 rounded-lg p-4 max-w-md mx-auto";
               
-              selectedNode.reportees.forEach(reporteeNode => {
-                const reporteeCard = createEmployeeCard(reporteeNode.employee, "scale-90 opacity-90");
-                reportsGrid.appendChild(reporteeCard);
+              const breakdownTitle = document.createElement("div");
+              breakdownTitle.className = "text-sm font-medium text-gray-600 mb-3 text-center";
+              breakdownTitle.textContent = "Team Breakdown:";
+              breakdown.appendChild(breakdownTitle);
+
+              Object.entries(departmentGroups).forEach(([dept, members]) => {
+                const deptLine = document.createElement("div");
+                deptLine.className = "flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0";
+                deptLine.innerHTML = `
+                  <span class="text-sm text-gray-700">${dept}</span>
+                  <span class="text-sm font-semibold text-gray-900">${members.length} ${members.length === 1 ? 'person' : 'people'}</span>
+                `;
+                breakdown.appendChild(deptLine);
               });
               
-              reportsSection.appendChild(reportsGrid);
+              reportsContainer.appendChild(breakdown);
             }
-
+            
+            reportsSection.appendChild(reportsTitle);
+            reportsSection.appendChild(reportsContainer);
             content.appendChild(reportsSection);
           }
 
@@ -571,34 +600,13 @@
           }
         }
 
-        // Fallback: Demo connections for ashwink for testing
-        // if ((employee.ldap === 'ashwink' || employee.name.toLowerCase().includes('ashwin')) && connections.length === 0) {
-        //   console.log('🔧 Creating demo connections for ashwink (no real connections found)');
-        //   const qtMembers = coreTeam.length > 0 ? coreTeam : [
-        //     { ldap: "lihi.segev", name: "Lihi Segev", company: "QT", designation: "Engineering Manager", organisation: "QT Engineering" },
-        //     { ldap: "abhijeet.bagade", name: "Abhijeet Bagade", company: "QT", designation: "Product Manager", organisation: "QT Product" },
-        //     { ldap: "omri.nissim", name: "Omri Nissim", company: "QT", designation: "Senior Developer", organisation: "QT Engineering" },
-        //     { ldap: "john.mitchell", name: "John Mitchell", company: "QT", designation: "Global Delivery Manager", organisation: "QT Delivery" }
-        //   ];
-
-        //   connections = qtMembers.slice(0, 4).map((qtMember, index) => {
-        //     const strengths = ['strong', 'medium', 'medium', 'weak'];
-        //     return {
-        //       qtLdap: qtMember.ldap,
-        //       qtName: qtMember.name,
-        //       connectionStrength: strengths[index] || 'medium',
-        //       path: [qtMember.ldap, employee.ldap]
-        //     };
-        //   });
-        // }
-
         const qtSection = document.createElement("div");
         qtSection.className = "mt-8 pt-6 border-t border-gray-200";
 
         if (connections.length > 0) {
           qtSection.innerHTML = `
             <div class="text-center text-sm font-semibold text-gray-600 mb-4">
-              QT Team Connections ${connections.length > 0 ? `(${connections.length} declared)` : ''}
+              QT Team Connections (${connections.length} declared)
             </div>
           `;
 
@@ -615,17 +623,30 @@
             // Normalize connection strength
             const connectionStrength = normalizeConnectionStrength(conn.connectionStrength);
 
+            // FIXED: Calculate proper connection path with actual intermediate steps
             const connectionDiv = document.createElement("div");
             connectionDiv.className = "flex flex-col items-center gap-0";
 
             const topLine = document.createElement("div");
             topLine.className = "w-px h-4 bg-gray-300";
             
+            // Calculate actual connection path - for direct QT to Google connection, it should be 1 step
+            // If there are intermediaries, count them properly
+            let actualPath;
+            if (conn.path && conn.path.length > 0) {
+              actualPath = conn.path;
+            } else {
+              // Direct connection: QT person -> Google person (1 step)
+              actualPath = [conn.qtLdap, employee.ldap];
+            }
+            
+            console.log('QT Connection - qtLdap:', conn.qtLdap, 'googleLdap:', employee.ldap, 'path:', actualPath);
+            
             const tooltip = createConnectionTooltip(
-              conn.path || [conn.qtLdap, employee.ldap], 
+              actualPath, 
               () => {
-                console.log('🔗 Real connection clicked for:', qtEmployee.name, 'Strength:', connectionStrength);
-                showExpandedHierarchy(qtEmployee, conn.path || [conn.qtLdap, employee.ldap], connectionStrength);
+                console.log('🔗 Real connection clicked for:', qtEmployee.name, 'Strength:', connectionStrength, 'Path:', actualPath);
+                showExpandedHierarchy(qtEmployee, actualPath, connectionStrength);
               }
             );
             
@@ -748,6 +769,7 @@
           avatar: `https://i.pravatar.cc/150?u=${qtLdap}`
         };
       }
+
       function normalizeManagerReference(manager) {
         if (!manager) return null;
         
@@ -818,6 +840,7 @@
         // For now, return simple path - can be enhanced for deeper hierarchy traversal
         return [fromLdap, toLdap];
       }
+
       function getEmployeeName(path, fallbackEmployee) {
         if (!path || path.length === 0) {
           return fallbackEmployee?.name || 'Employee';
@@ -1070,8 +1093,12 @@
           const searchTerm = e.target.value.toLowerCase();
           console.log('Searching for:', searchTerm);
           
+          // ADDED: Clear selection and reset to original state when search is cleared
           if (searchTerm.length === 0) {
             suggestions.classList.add("hidden");
+            selectedEmployee = null;
+            expandedConnection = null;
+            resetToOriginalState();
             return;
           }
 
@@ -1082,7 +1109,8 @@
             if (response.ok) {
               const apiResults = await response.json();
               if (apiResults && apiResults.length > 0) {
-                filtered = apiResults.slice(0, 5);
+                // FIXED: Show more API results (increased from 5 to 15)
+                filtered = apiResults.slice(0, 15);
                 console.log('API search results:', filtered.length);
               }
             }
@@ -1092,16 +1120,26 @@
 
           // Fallback to local search if API failed or no results
           if (filtered.length === 0) {
+            // FIXED: Enhanced search to find more matches and increased limit
             filtered = googleEmployees
               .filter(
                 (emp) =>
+                  // Search in name (both first and last name parts)
                   emp.name.toLowerCase().includes(searchTerm) || 
+                  // Search in individual name parts (for cases like "Ehud Persitz")
+                  emp.name.toLowerCase().split(' ').some(part => part.includes(searchTerm)) ||
+                  // Search in LDAP
                   emp.ldap.toLowerCase().includes(searchTerm) || 
+                  // Search in designation
                   emp.designation.toLowerCase().includes(searchTerm) ||
-                  (emp.email && emp.email.toLowerCase().includes(searchTerm))
+                  // Search in email
+                  (emp.email && emp.email.toLowerCase().includes(searchTerm)) ||
+                  // Search in organisation
+                  (emp.organisation && emp.organisation.toLowerCase().includes(searchTerm))
               )
-              .slice(0,10);
-            console.log('Local search results:', filtered.length);
+              // FIXED: Increased from 10 to 20 results to show more matches
+              .slice(0, 20);
+            console.log('Local search results:', filtered.length, 'for term:', searchTerm);
           }
 
           suggestions.innerHTML = "";
@@ -1109,8 +1147,22 @@
             filtered.forEach((employee) => {
               const item = document.createElement("button");
               item.className = "suggestion-item";
+              
+              // FIXED: Use proper avatar or initials in search suggestions
+              let suggestionAvatarHtml;
+              if (isValidImageUrl(employee.avatar)) {
+                suggestionAvatarHtml = `<img src="${employee.avatar}" alt="${employee.name}" class="w-8 h-8 rounded-full object-cover" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                       <div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-xs" style="display:none;">
+                                         ${getInitials(employee.name)}
+                                       </div>`;
+              } else {
+                suggestionAvatarHtml = `<div class="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-xs">
+                                         ${getInitials(employee.name)}
+                                       </div>`;
+              }
+              
               item.innerHTML = `
-                            <img src="${employee.avatar}" alt="${employee.name}" class="w-8 h-8 rounded-full">
+                            ${suggestionAvatarHtml}
                             <div>
                                 <div>${employee.name}</div>
                                 <div class="text-sm muted">${employee.designation}</div>
@@ -1136,6 +1188,31 @@
         document.addEventListener("click", (e) => {
           if (!e.target.closest(".relative")) suggestions.classList.add("hidden");
         });
+      }
+
+      // ADDED: Function to reset page to original state
+      function resetToOriginalState() {
+        console.log('🔄 Resetting to original state');
+        const mainContent = document.getElementById("mainContent");
+        
+        // Destroy any existing Swiper instances
+        if (summarySwiperInstance) {
+          summarySwiperInstance.destroy();
+          summarySwiperInstance = null;
+        }
+        
+        // Reset to original welcome message
+        mainContent.innerHTML = `
+          <div class="text-center muted py-16">
+            <p>Search and select a Google employee to view their hierarchy and connections.</p>
+          </div>
+        `;
+        
+        // Clear global state
+        selectedEmployee = null;
+        expandedConnection = null;
+        
+        console.log('✅ Reset to original state complete');
       }
 
       // --- DATA PRE-COMPUTATION (For Demo) ---
