@@ -15,15 +15,36 @@ import tempfile
 import logging
 from functools import lru_cache
 import gc
+import time
 
 app = Flask(__name__)
 CORS(app)
 
+# Rate limiter for Google Sheets API
+class APIRateLimiter:
+    def __init__(self, min_interval=1.0):
+        self.min_interval = min_interval  # Minimum seconds between API calls
+        self.last_call_time = 0
+
+    def wait_if_needed(self):
+        """Wait if needed to respect rate limit"""
+        current_time = time.time()
+        time_since_last_call = current_time - self.last_call_time
+
+        if time_since_last_call < self.min_interval:
+            sleep_time = self.min_interval - time_since_last_call
+            time.sleep(sleep_time)
+
+        self.last_call_time = time.time()
+
+# Global rate limiter instance
+api_rate_limiter = APIRateLimiter(min_interval=2.0)  # 2 seconds between calls for quota safety
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
-# Google Sheets Configuration - Optimized
+            # Google Sheets Configuration - Optimized
 GOOGLE_SHEETS_CONFIG = {
     'spreadsheet_id': '1OH64Lt1dm-WqlhAXVvXEbFb8-PNvh_ODkD79SjaYkPs',
     'spreadsheet_url': 'https://docs.google.com/spreadsheets/d/1OH64Lt1dm-WqlhAXVvXEbFb8-PNvh_ODkD79SjaYkPs/edit?gid=0#gid=0',
@@ -34,7 +55,7 @@ GOOGLE_SHEETS_CONFIG = {
         'https://www.googleapis.com/auth/drive'
     ],
     'batch_size': 1000,
-    'max_employees': 100000,
+    'max_employees': 200000, # Increased for debugging large datasets
     'progress_interval': 1000,
     'memory_cleanup_interval': 5000
 }
@@ -46,10 +67,62 @@ core_team = []
 processing_stats = {}
 last_sync_time = None
 
+# Cached connections data to avoid quota issues
+cached_connections_data = None
+connections_cache_time = None
+connections_cache_ttl = 300  # 5 minutes cache TTL
+
 @lru_cache(maxsize=1000)
 def get_employee_by_ldap(ldap: str):
     """Cached employee lookup by LDAP"""
     return next((emp for emp in employees_data if emp.get('ldap') == ldap), None)
+
+def get_cached_connections_data():
+    """Get cached connections data to avoid Google Sheets API quota issues"""
+    global cached_connections_data, connections_cache_time
+
+    current_time = time.time()
+
+    # Check if cache is valid
+    if (cached_connections_data is not None and
+        connections_cache_time is not None and
+        current_time - connections_cache_time < connections_cache_ttl):
+        logger.debug(f"📋 Using cached connections data ({len(cached_connections_data)} records)")
+        return cached_connections_data
+
+    # Cache is stale or doesn't exist, fetch fresh data
+    try:
+        logger.debug("🔄 Refreshing connections cache from Google Sheets...")
+        api_rate_limiter.wait_if_needed()  # Respect rate limits
+
+        connections_sheet = sheet_writer.get_or_create_connections_sheet()
+        if not connections_sheet:
+            logger.warning("⚠️ Could not access Connections sheet, using empty cache")
+            cached_connections_data = []
+            connections_cache_time = current_time
+            return cached_connections_data
+
+        records = connections_sheet.get_all_records()
+        cached_connections_data = records
+        connections_cache_time = current_time
+
+        logger.debug(f"✅ Cached {len(cached_connections_data)} connections records")
+        return cached_connections_data
+
+    except Exception as e:
+        logger.error(f"❌ Error refreshing connections cache: {e}")
+        # Return stale cache if available, otherwise empty list
+        if cached_connections_data is not None:
+            logger.warning("⚠️ Using stale cache due to API error")
+            return cached_connections_data
+        return []
+
+def invalidate_connections_cache():
+    """Invalidate the connections cache to force refresh on next access"""
+    global cached_connections_data, connections_cache_time
+    cached_connections_data = None
+    connections_cache_time = None
+    logger.debug("🗑️ Connections cache invalidated")
 
 class OptimizedGoogleSheetsConnector:
     """Optimized Google Sheets connector with better performance"""
@@ -62,27 +135,27 @@ class OptimizedGoogleSheetsConnector:
     def authenticate(self):
         """Optimized authentication with error handling"""
         try:
-            logger.info("Authenticating with Google Sheets API...")
+            logger.debug("Authenticating with Google Sheets API...")
             
             if os.path.exists(self.config['service_account_file']):
-                logger.info(f"Using service account file: {self.config['service_account_file']}")
+                logger.debug(f"Using service account file: {self.config['service_account_file']}")
                 creds = Credentials.from_service_account_file(
                     self.config['service_account_file'],
                     scopes=self.config['scopes']
                 )
                 self.client = gspread.authorize(creds)
-                logger.info("Authentication successful")
+                logger.debug("Authentication successful")
                 return True
                 
             elif 'GOOGLE_SERVICE_ACCOUNT_JSON' in os.environ:
-                logger.info("Using service account from environment variable")
+                logger.debug("Using service account from environment variable")
                 service_account_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON'])
                 creds = Credentials.from_service_account_info(
                     service_account_info,
                     scopes=self.config['scopes']
                 )
                 self.client = gspread.authorize(creds)
-                logger.info("Authentication successful with environment credentials")
+                logger.debug("Authentication successful with environment credentials")
                 return True
                 
             else:
@@ -112,19 +185,19 @@ class OptimizedGoogleSheetsConnector:
         with open('credentials_template.json', 'w') as f:
             json.dump(sample_creds, f, indent=2)
         
-        logger.info("Created 'credentials_template.json' template")
+        logger.debug("Created 'credentials_template.json' template")
     
     def connect_to_spreadsheet(self):
         """Optimized spreadsheet connection"""
         try:
-            logger.info(f"Connecting to spreadsheet: {self.config['spreadsheet_id']}")
+            logger.debug(f"Connecting to spreadsheet: {self.config['spreadsheet_id']}")
             
             if not self.client:
                 if not self.authenticate():
                     return False
             
             self.spreadsheet = self.client.open_by_key(self.config['spreadsheet_id'])
-            logger.info(f"Connected to: {self.spreadsheet.title}")
+            logger.debug(f"Connected to: {self.spreadsheet.title}")
             return True
             
         except Exception as e:
@@ -139,7 +212,7 @@ class OptimizedGoogleSheetsConnector:
                     return None
             
             sheet_name = sheet_name or self.config.get('sheet_name', 'Sheet1')
-            logger.info(f"Getting data from sheet: {sheet_name}")
+            logger.debug(f"Getting data from sheet: {sheet_name}")
             
             try:
                 worksheet = self.spreadsheet.worksheet(sheet_name)
@@ -148,7 +221,10 @@ class OptimizedGoogleSheetsConnector:
                 logger.warning(f"Sheet '{sheet_name}' not found, using first sheet: {worksheet.title}")
             
             # Get all values at once (more efficient than row-by-row)
+            # Apply rate limiting to prevent API quota errors
+            api_rate_limiter.wait_if_needed()
             all_values = worksheet.get_all_values()
+            logger.debug(f"Raw values retrieved from {sheet_name}: {len(all_values)} rows")
             
             if not all_values or len(all_values) < 2:
                 logger.error("No data found or insufficient data")
@@ -158,8 +234,9 @@ class OptimizedGoogleSheetsConnector:
             if len(all_values) > self.config['max_employees']:
                 logger.warning(f"Large dataset detected ({len(all_values)} rows), limiting to {self.config['max_employees']}")
                 all_values = all_values[:self.config['max_employees']]
+            logger.debug(f"Values after max_employees check: {len(all_values)} rows")
             
-            logger.info(f"Retrieved {len(all_values)} rows from sheet")
+            logger.debug(f"Retrieved {len(all_values)} rows from sheet")
             
             # Create DataFrame more efficiently
             headers = all_values[0]
@@ -173,7 +250,7 @@ class OptimizedGoogleSheetsConnector:
                 return None
             
             df = pd.DataFrame(data_rows, columns=headers)
-            logger.info(f"Created DataFrame: {len(df)} rows, {len(df.columns)} columns")
+            logger.debug(f"Created DataFrame: {len(df)} rows, {len(df.columns)} columns")
             
             return df
                 
@@ -183,7 +260,7 @@ class OptimizedGoogleSheetsConnector:
     
     def create_sample_data(self):
         """Create sample data based on actual Google Sheets structure"""
-        logger.info("Creating sample data matching Google Sheets structure...")
+        logger.debug("Creating sample data matching Google Sheets structure...")
         
         # Sample data that matches your actual Google Sheets columns and some real data
         sample_data = [
@@ -211,9 +288,8 @@ class OptimizedGoogleSheetsConnector:
         ]
         
         df = pd.DataFrame(sample_data[1:], columns=sample_data[0])
-        logger.info(f"Created sample data matching Google Sheets: {len(df)} rows")
+        logger.debug(f"Created sample data matching Google Sheets: {len(df)} rows")
         return df
-
 class OptimizedGoogleSheetsProcessor:
     """Optimized processor with better memory management"""
     
@@ -226,7 +302,7 @@ class OptimizedGoogleSheetsProcessor:
         mapping = {}
         columns_lower = [str(col).lower().strip() for col in columns]
         
-        logger.info(f"Analyzing {len(columns)} columns: {columns}")
+        logger.debug(f"Analyzing {len(columns)} columns: {columns}")
         
         # Map based on your actual Google Sheets columns
         for i, col in enumerate(columns):
@@ -247,7 +323,7 @@ class OptimizedGoogleSheetsProcessor:
             elif col_lower in ['moma photo url']:
                 mapping['avatar'] = col
         
-        logger.info(f"Column mapping detected: {mapping}")
+        logger.debug(f"Column mapping detected: {mapping}")
         return mapping
     
     def extract_employee_data_optimized(self, row, column_mapping, index):
@@ -286,9 +362,9 @@ class OptimizedGoogleSheetsProcessor:
                 organisation = 'Olenick' 
                 company = 'OLENICK'
             
-            # Generate avatar if not provided
+            # Only use avatar_url if it's a valid MOMA Photo URL, otherwise leave empty for initials fallback
             if not avatar_url or avatar_url in ['Unknown', '', 'N/A']:
-                avatar_url = f"https://i.pravatar.cc/150?u={emp_id}"
+                avatar_url = ''
             
             # Create employee object matching your data structure
             employee = {
@@ -335,12 +411,63 @@ class OptimizedGoogleSheetsProcessor:
         start_time = datetime.now()
         
         try:
-            logger.info("Starting optimized Google Sheets processing...")
+            logger.debug("Starting optimized Google Sheets processing...")
             
-            # Get data with optimizations
-            df = self.connector.get_sheet_data_optimized()
+            # Get data from primary sheet (Sheet1)
+            df_primary = self.connector.get_sheet_data_optimized(sheet_name=self.config.get('sheet_name', 'Sheet1'))
             
-            if df is None:
+            # Get data from Connections sheet
+            df_connections = None
+            try:
+                connections_sheet = self.connector.spreadsheet.worksheet('Connections')
+                # Apply rate limiting to prevent API quota errors
+                api_rate_limiter.wait_if_needed()
+                all_connections_values = connections_sheet.get_all_values()
+                if all_connections_values and len(all_connections_values) > 1:
+                    headers = all_connections_values[0]
+                    data_rows = all_connections_values[1:]
+                    data_rows = [row for row in data_rows if any(cell.strip() for cell in row)]
+                    if data_rows:
+                        df_connections = pd.DataFrame(data_rows, columns=headers)
+                        logger.debug(f"Retrieved {len(df_connections)} rows from Connections sheet")
+            except gspread.WorksheetNotFound:
+                logger.warning("Connections sheet not found, skipping employee data extraction from it.")
+            except Exception as e:
+                logger.error(f"Error reading Connections sheet for employee data: {e}")
+
+            # Combine dataframes and extract unique Google Employee profiles from Connections sheet
+            all_employees_df = df_primary.copy() if df_primary is not None else pd.DataFrame()
+
+            if df_connections is not None and not df_connections.empty:
+                # Extract unique Google Employee profiles from Connections sheet
+                google_employees_from_connections = df_connections[[
+                    'Google Employee LDAP',
+                    'Google Employee Name',
+                    'Google Employee Email',
+                    'Google Employee Department'
+                ]].drop_duplicates().rename(columns={
+                    'Google Employee LDAP': 'LDAP',
+                    'Google Employee Name': 'Name',
+                    'Google Employee Email': 'Email',
+                    'Google Employee Department': 'Department'
+                })
+                
+                # Add missing columns to match primary sheet structure (e.g., Position, Country)
+                for col in df_primary.columns:
+                    if col not in google_employees_from_connections.columns:
+                        google_employees_from_connections[col] = '' # Fill with empty string or appropriate default
+
+                # Ensure column order matches for concatenation
+                google_employees_from_connections = google_employees_from_connections[df_primary.columns]
+
+                # Concatenate and drop duplicates based on LDAP
+                all_employees_df = pd.concat([all_employees_df, google_employees_from_connections], ignore_index=True)
+                all_employees_df.drop_duplicates(subset=['LDAP'], inplace=True)
+                logger.debug(f"Merged employee data from primary and Connections sheets. Total unique employees: {len(all_employees_df)}")
+
+            df = all_employees_df
+            
+            if df is None or df.empty:
                 logger.warning("Could not access Google Sheets - using sample data")
                 df = self.connector.create_sample_data()
                 data_source = 'Sample Data (Google Sheets failed)'
@@ -348,7 +475,7 @@ class OptimizedGoogleSheetsProcessor:
                 data_source = 'Google Sheets'
             
             # Optimized DataFrame cleaning
-            logger.info("Cleaning DataFrame...")
+            logger.debug("Cleaning DataFrame...")
             original_rows = len(df)
             
             # Remove empty rows more efficiently
@@ -356,7 +483,7 @@ class OptimizedGoogleSheetsProcessor:
             # Fix: Apply string operations correctly
             df = df[~df.apply(lambda row: all(str(cell).strip() == '' for cell in row), axis=1)]
             
-            logger.info(f"Cleaned DataFrame: {len(df)} rows (removed {original_rows - len(df)} empty rows)")
+            logger.debug(f"Cleaned DataFrame: {len(df)} rows (removed {original_rows - len(df)} empty rows)")
             
             # Detect column mapping
             column_mapping = self.detect_column_mapping(df.columns)
@@ -381,7 +508,7 @@ class OptimizedGoogleSheetsProcessor:
             batch_size = self.config['batch_size']
             total_batches = (len(df) + batch_size - 1) // batch_size
             
-            logger.info(f"Processing {len(df)} rows in {total_batches} batches of {batch_size}")
+            logger.debug(f"Processing {len(df)} rows in {total_batches} batches of {batch_size}")
             
             for batch_num in range(total_batches):
                 batch_start = batch_num * batch_size
@@ -409,9 +536,7 @@ class OptimizedGoogleSheetsProcessor:
                 # Add batch to main list
                 employees.extend(batch_employees)
                 
-                # Progress logging (less frequent)
-                if stats['processed_rows'] % self.config['progress_interval'] == 0:
-                    logger.info(f"Processed {stats['processed_rows']:,} profiles...")
+                # Progress logging disabled to reduce terminal output
                 
                 # Memory cleanup every few batches
                 if batch_num % 10 == 0:
@@ -423,12 +548,12 @@ class OptimizedGoogleSheetsProcessor:
             
             stats['processing_time'] = (datetime.now() - start_time).total_seconds()
             
-            logger.info("Optimized processing complete!")
-            logger.info(f"Total processed: {len(employees):,} profiles")
-            logger.info(f"Google employees: {stats['google_employees']:,}")
-            logger.info(f"Olenick employees: {stats['olenick_employees']:,}")
-            logger.info(f"Other employees: {stats['other_employees']:,}")
-            logger.info(f"Processing time: {stats['processing_time']:.2f} seconds")
+            logger.debug("Optimized processing complete!")
+            logger.debug(f"Total processed: {len(employees):,} profiles")
+            logger.debug(f"Google employees: {stats['google_employees']:,}")
+            logger.debug(f"Olenick employees: {stats['olenick_employees']:,}")
+            logger.debug(f"Other employees: {stats['other_employees']:,}")
+            logger.debug(f"Processing time: {stats['processing_time']:.2f} seconds")
             
             return employees, stats
             
@@ -444,7 +569,7 @@ def load_google_sheets_data_optimized():
     global employees_data, google_employees, core_team, processing_stats, last_sync_time
     
     try:
-        logger.info("Loading Google Sheets data with optimizations...")
+        logger.debug("Loading Google Sheets data with optimizations...")
         
         employees, stats = processor.process_google_sheets_data_optimized()
         
@@ -476,12 +601,12 @@ def load_google_sheets_data_optimized():
         departments = len(set(emp.get('department', 'Unknown') for emp in employees))
         locations = len(set(emp.get('location', 'Unknown') for emp in employees))
         
-        logger.info(f"Successfully loaded employee data:")
-        logger.info(f"Total: {len(employees_data):,}")
-        logger.info(f"Google: {len(google_employees):,}")
-        logger.info(f"Olenick: {len(olenick_employees):,}")
-        logger.info(f"Departments: {departments}")
-        logger.info(f"Locations: {locations}")
+        logger.debug(f"Successfully loaded employee data:")
+        logger.debug(f"Total: {len(employees_data):,}")
+        logger.debug(f"Google: {len(google_employees):,}")
+        logger.debug(f"Olenick: {len(olenick_employees):,}")
+        logger.debug(f"Departments: {departments}")
+        logger.debug(f"Locations: {locations}")
         
         return True
         
@@ -492,7 +617,7 @@ def load_google_sheets_data_optimized():
 def build_organizational_hierarchy():
     """Build proper manager-reportee relationships from Google Sheets data"""
     try:
-        logger.info("Building organizational hierarchy from manager email relationships...")
+        logger.debug("Building organizational hierarchy from manager email relationships...")
         
         # First, create a mapping of email to employee for faster lookup
         email_to_employee = {}
@@ -542,12 +667,12 @@ def build_organizational_hierarchy():
         managers_count = len([emp for emp in employees_data if 'reportees' in emp and emp['reportees']])
         total_reportees = sum(len(emp.get('reportees', [])) for emp in employees_data)
         
-        logger.info(f"Built hierarchy: {managers_count} managers with {total_reportees} total reportees")
+        logger.debug(f"Built hierarchy: {managers_count} managers with {total_reportees} total reportees")
         
         # Log some examples for debugging
         for emp in employees_data[:5]:
             if emp.get('reportees'):
-                logger.info(f"Manager: {emp['name']} has {len(emp['reportees'])} reportees")
+                logger.debug(f"Manager: {emp['name']} has {len(emp['reportees'])} reportees")
         
     except Exception as e:
         logger.error(f"Error building organizational hierarchy: {e}")
@@ -719,40 +844,60 @@ def sync_sharepoint():
 @app.route('/api/search-employees')
 def search_employees():
     """FIXED: Employee search that finds actual employees, not their reportees"""
+    # Auto-load data if not loaded yet
+    if not employees_data:
+        logger.debug("Data not loaded, loading now...")
+        load_google_sheets_data_optimized()
+
     query = request.args.get('q', '').lower().strip()
-    
+
     if len(query) < 2:
         return jsonify([])
-    
+
     try:
         filtered = []
         max_results = 25
-        
+        seen_employees = set()  # Track unique employees by LDAP to avoid duplicates
+
+        # Temporary check for epersitz
+        epersitz_found_in_employees_data = any(emp.get('ldap') == 'epersitz' for emp in employees_data)
+        logger.debug(f"DEBUG: 'epersitz' found in employees_data: {epersitz_found_in_employees_data}")
+
         for emp in employees_data:
             if len(filtered) >= max_results:
                 break
-                
+
+            # Skip duplicate employees (same LDAP)
+            employee_ldap = emp.get('ldap', '').lower().strip()
+            if not employee_ldap or employee_ldap in seen_employees:
+                continue
+
             score = 0
             
             # FIXED: Search the employee's own details, NOT manager relationships
             name = emp.get('name', '').lower()
+            logger.debug(f"Search: Employee Name: '{name}', Query in Name: {query in name}")
             if query in name:
                 score += 10
                 if name.startswith(query):
                     score += 5
             
             email = emp.get('email', '').lower()
+            logger.debug(f"Search: Employee Email: '{email}', Query in Email: {query in email}")
             if query in email:
                 score += 8
                 if email.startswith(query):
                     score += 3
             
             ldap = emp.get('ldap', '').lower()
+            logger.debug(f"Search: Employee LDAP: '{ldap}', Query in LDAP: {query in ldap}")
             if query in ldap:
                 score += 7
                 if ldap.startswith(query):
                     score += 3
             
+            logger.debug(f"Search: Employee '{emp.get('name')}' final score: {score}")
+
             if score == 0:
                 # Check other fields only if no name/email/ldap match
                 if query in emp.get('department', '').lower():
@@ -761,9 +906,9 @@ def search_employees():
                     score += 3
             
             if score > 0:
-                # Get hierarchy information for this employee
-                hierarchy = get_employee_hierarchy(emp['ldap'])
-                
+                # Mark this employee as seen
+                seen_employees.add(employee_ldap)
+
                 emp_copy = {
                     'ldap': emp['ldap'],
                     'name': emp['name'],
@@ -776,20 +921,40 @@ def search_employees():
                     'manager': emp.get('manager', ''),
                     'location': emp.get('location', ''),
                     '_search_score': score,
-                    # Add hierarchy info for the search results
-                    'reportees_count': len(hierarchy['reportees']) if hierarchy else 0,
-                    'manager_chain_length': len(hierarchy['manager_chain']) if hierarchy else 0,
-                    'has_reportees': len(hierarchy['reportees']) > 0 if hierarchy else False
+                    # Lazy loading - hierarchy and connections loaded on-demand via API calls
+                    'reportees_count': 0,  # Will be loaded when needed
+                    'manager_chain_length': 0,  # Will be loaded when needed
+                    'has_reportees': False,  # Will be loaded when needed
+                    'declared_connections': []  # Will be loaded when user clicks on employee
                 }
+
                 filtered.append(emp_copy)
         
-        # Sort by score
-        filtered.sort(key=lambda x: x['_search_score'], reverse=True)
+        # Sort by score first, then alphabetically by name
+        filtered.sort(key=lambda x: (
+            x['_search_score'],
+            x['name'].lower()
+        ), reverse=True)
         return jsonify(filtered)
-        
+
     except Exception as e:
         logger.error(f"Search error: {e}")
         return jsonify([])
+
+@app.route('/api/debug-get-employee-by-ldap/<ldap_id>')
+def debug_get_employee_by_ldap(ldap_id):
+    """Debug endpoint to test get_employee_by_ldap function"""
+    try:
+        logger.debug(f"Debugging get_employee_by_ldap for LDAP: {ldap_id}")
+        employee = get_employee_by_ldap(ldap_id)
+        if employee:
+            return jsonify(employee)
+        else:
+            return jsonify({'message': f'Employee with LDAP {ldap_id} not found.'}), 404
+    except Exception as e:
+        logger.error(f"Error in debug_get_employee_by_ldap: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/search-google-employees')
 def search_google_employees():
@@ -850,6 +1015,11 @@ def search_google_employees():
                     'connections': emp.get('connections', []),
                     '_search_score': score
                 }
+                
+                # --- NEW: Add declared connections from Google Sheets ---
+                declared_connections = get_connections_data(emp['ldap'])
+                emp_copy['declared_connections'] = declared_connections
+
                 filtered.append(emp_copy)
         
         # Sort by score
@@ -863,6 +1033,11 @@ def search_google_employees():
 @app.route('/api/google-employees')
 def get_google_employees():
     """Get Google employees (optimized)"""
+    # Auto-load data if not loaded yet
+    if not employees_data:
+        logger.debug("Data not loaded, loading now...")
+        load_google_sheets_data_optimized()
+
     try:
         # Return lightweight employee objects
         return jsonify([
@@ -889,6 +1064,11 @@ def get_google_employees():
 @app.route('/api/qt-team')
 def get_qt_team():
     """Get QT team members (optimized)"""
+    # Auto-load data if not loaded yet
+    if not employees_data:
+        logger.debug("Data not loaded, loading now...")
+        load_google_sheets_data_optimized()
+
     try:
         return jsonify([
             {
@@ -1121,10 +1301,10 @@ def batch_update_connections_fixed():
         connections = data.get('connections', {})
         declared_by = data.get('declaredBy', 'Qonnect User')
         
-        logger.info(f"🎯 Connection update request:")
-        logger.info(f"  Google LDAP: {google_ldap}")
-        logger.info(f"  Connections: {len(connections)} items")
-        logger.info(f"  Data: {connections}")
+        logger.debug(f"🎯 Connection update request:")
+        logger.debug(f"  Google LDAP: {google_ldap}")
+        logger.debug(f"  Connections: {len(connections)} items")
+        logger.debug(f"  Data: {connections}")
         
         if not google_ldap or not connections:
             logger.error("❌ Missing required data")
@@ -1134,7 +1314,7 @@ def batch_update_connections_fixed():
             }), 400
         
         # Update in-memory data (existing functionality)
-        logger.info("💾 Updating in-memory data...")
+        logger.debug("💾 Updating in-memory data...")
         google_employee = get_employee_by_ldap(google_ldap)
         if google_employee:
             if 'connections' not in google_employee:
@@ -1146,7 +1326,7 @@ def batch_update_connections_fixed():
                 
                 if existing_conn:
                     existing_conn['connectionStrength'] = strength
-                    logger.info(f"  ✏️ Updated: {qt_ldap} -> {strength}")
+                    logger.debug(f"  ✏️ Updated: {qt_ldap} -> {strength}")
                 else:
                     qt_employee = next((emp for emp in core_team if emp.get('ldap') == qt_ldap), None)
                     if qt_employee:
@@ -1155,12 +1335,12 @@ def batch_update_connections_fixed():
                             'name': qt_employee.get('name'),
                             'connectionStrength': strength
                         })
-                        logger.info(f"  ➕ Added: {qt_ldap} -> {strength}")
+                        logger.debug(f"  ➕ Added: {qt_ldap} -> {strength}")
         
-        logger.info("✅ In-memory data updated")
+        logger.debug("✅ In-memory data updated")
         
         # FIXED: Direct Google Sheets writing without relying on sheet_writer object
-        logger.info("📝 Writing directly to Google Sheets...")
+        logger.debug("📝 Writing directly to Google Sheets...")
         try:
             # Create a fresh connector instance
             from google.oauth2.service_account import Credentials
@@ -1186,15 +1366,17 @@ def batch_update_connections_fixed():
             
             # Connect to spreadsheet
             client = gspread.authorize(creds)
+            # Apply rate limiting to prevent API quota errors
+            api_rate_limiter.wait_if_needed()
             spreadsheet = client.open_by_key(GOOGLE_SHEETS_CONFIG['spreadsheet_id'])
-            logger.info(f"✅ Connected to spreadsheet: {spreadsheet.title}")
+            logger.debug(f"✅ Connected to spreadsheet: {spreadsheet.title}")
             
             # Get or create Connections sheet
             try:
                 connections_sheet = spreadsheet.worksheet('Connections')
-                logger.info("✅ Found existing Connections sheet")
+                logger.debug("✅ Found existing Connections sheet")
             except gspread.WorksheetNotFound:
-                logger.info("📄 Creating new Connections sheet...")
+                logger.debug("📄 Creating new Connections sheet...")
                 connections_sheet = spreadsheet.add_worksheet(title='Connections', rows=1000, cols=12)
                 
                 # Add headers
@@ -1205,7 +1387,7 @@ def batch_update_connections_fixed():
                     'QT Employee Department', 'Connection Strength', 'Declared By', 'Notes'
                 ]
                 connections_sheet.append_row(headers)
-                logger.info("✅ Added headers to new sheet")
+                logger.debug("✅ Added headers to new sheet")
             
             # Prepare data rows
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1249,12 +1431,12 @@ def batch_update_connections_fixed():
                 
                 rows_to_add.append(row_data)
                 successful_connections.append(f"{qt_emp.get('name')} ({strength})")
-                logger.info(f"  📝 Prepared row for {qt_emp.get('name')}")
+                logger.debug(f"  📝 Prepared row for {qt_emp.get('name')}")
             
             # Write all rows to Google Sheets
             if rows_to_add:
                 connections_sheet.append_rows(rows_to_add)
-                logger.info(f"🎉 Successfully wrote {len(rows_to_add)} rows to Google Sheets!")
+                logger.debug(f"🎉 Successfully wrote {len(rows_to_add)} rows to Google Sheets!")
                 
                 return jsonify({
                     'success': True,
@@ -1310,7 +1492,7 @@ def test_sheet_write():
         import json
         from datetime import datetime
         
-        logger.info("🧪 Testing direct Google Sheets write...")
+        logger.debug("🧪 Testing direct Google Sheets write...")
         
         # Authenticate
         if os.path.exists(GOOGLE_SHEETS_CONFIG['service_account_file']):
@@ -1350,68 +1532,213 @@ def test_sheet_write():
         }), 500
 
 
-print("""
-🔧 FIXED ENDPOINT READY!
+def get_connections_data(employee_ldap):
+    """Get actual organizational connections and hierarchy for an employee, including those from Google Sheets - INTERNAL VERSION"""
+    try:
+        # Get hierarchy information
+        hierarchy = get_employee_hierarchy(employee_ldap)
 
-To fix your Google Sheets writing issue:
+        if not hierarchy:
+            logger.warning(f"No hierarchy found for {employee_ldap}")
+            # Even if no hierarchy, we might still have declared connections
+            employee_info = get_employee_by_ldap(employee_ldap)
+            if not employee_info:
+                return []
+            hierarchy = {'employee': employee_info, 'manager_chain': [], 'reportees': []}
 
-1. Replace your /api/batch-update-connections endpoint with the fixed version above
-2. Add the test endpoint 
-3. Restart your Flask app
-4. Test with: curl -X POST http://localhost:8080/api/test-sheet-write
+        # Initialize connections list
+        connections = []
 
-The fixed version:
-✅ Creates fresh Google Sheets connection each time
-✅ Handles authentication directly 
-✅ Creates Connections sheet if missing
-✅ Provides detailed error logging
-✅ Has fallback data handling
-""")
+        # --- 1. Add connections from Google Sheets 'Connections' tab (cached) ---
+        logger.debug(f"Reading declared connections for {employee_ldap} from cached data...")
+        try:
+            # Use cached connections data to avoid quota issues
+            records = get_cached_connections_data()
+            declared_connections = [
+                {
+                    'qtLdap': rec.get('QT Employee LDAP'),
+                    'connectionStrength': rec.get('Connection Strength', '').lower(),
+                    'declaredBy': rec.get('Declared By'),
+                    'timestamp': rec.get('Timestamp'),
+                    'notes': rec.get('Notes'),
+                    'source': 'Google Sheets'
+                }
+                for rec in records
+                if rec.get('Google Employee LDAP') == employee_ldap
+            ]
+            logger.debug(f"✅ Found {len(declared_connections)} declared connections for {employee_ldap} from cache.")
+            connections.extend(declared_connections)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load declared connections from cache: {e}")
+
+        # --- 2. Add connections to QT team members (Olenick employees) through manager chain (existing logic) ---
+        # This part can be kept if you want to infer connections based on hierarchy *in addition* to declared ones
+        # Ensure no duplicates if a connection is both declared and inferred
+        existing_qt_ldaps = {conn['qtLdap'] for conn in connections}
+
+        for qt_emp in core_team:  # Iterate through all core_team, not just first 5
+            qt_ldap = qt_emp.get('ldap')
+            if qt_ldap == employee_ldap or qt_ldap in existing_qt_ldaps:
+                continue # Skip self and already declared connections
+
+            path = [qt_ldap]
+            strength = 'weak' # Default to weak, then strengthen
+
+            # Check for direct reporting relationship (manager chain)
+            manager_ldaps = [mgr.get('ldap') for mgr in hierarchy['manager_chain']]
+            if qt_ldap in manager_ldaps:
+                path.append(employee_ldap)
+                strength = 'strong'
+            elif hierarchy['employee'].get('department') == qt_emp.get('department'):
+                # Same department connection
+                path.append(employee_ldap)
+                strength = 'medium'
+            else:
+                # Indirect connection through a common manager (if any)
+                if hierarchy['manager_chain']:
+                    path.append(hierarchy['manager_chain'][0].get('ldap'))
+                path.append(employee_ldap)
+                strength = 'weak'
+
+            connections.append({
+                'qtLdap': qt_ldap,
+                'connectionStrength': strength,
+                'path': path,
+                'source': 'Inferred'
+            })
+
+        # --- 3. Add TRANSITIVE connections through direct reports ---
+        # If employee has no direct/declared connections, check if their direct reports have connections
+        declared_connections_count = len([c for c in connections if c.get('source') == 'Google Sheets'])
+        if declared_connections_count == 0 and hierarchy and hierarchy['reportees']:
+            logger.info(f"No direct connections found for {employee_ldap}, checking transitive connections through {len(hierarchy['reportees'])} direct reports...")
+
+            transitive_connections = []
+            checked_reports = 0
+            max_reports_to_check = 10  # Limit to avoid performance issues
+
+            for reportee in hierarchy['reportees'][:max_reports_to_check]:
+                reportee_ldap = reportee.get('ldap')
+                if reportee_ldap:
+                    # Get connections for this direct report (recursive call, but limited)
+                    reportee_connections = get_connections_data(reportee_ldap)
+                    checked_reports += 1
+
+                    # Add transitive connections through this reportee
+                    for conn in reportee_connections:
+                        if conn.get('source') == 'Google Sheets':  # Only include declared connections
+                            transitive_connections.append({
+                                'qtLdap': conn['qtLdap'],
+                                'connectionStrength': conn.get('connectionStrength', 'weak'),  # Inherit original strength
+                                'declaredBy': conn.get('declaredBy', ''),
+                                'timestamp': conn.get('timestamp', ''),
+                                'notes': f"Via {reportee.get('name', reportee_ldap)} → {conn.get('notes', '')}",
+                                'source': 'Transitive',
+                                'intermediatePerson': {
+                                    'ldap': reportee_ldap,
+                                    'name': reportee.get('name'),
+                                    'email': reportee.get('email')
+                                }
+                            })
+
+            if transitive_connections:
+                logger.info(f"Found {len(transitive_connections)} transitive connections for {employee_ldap} through {checked_reports} direct reports")
+                connections.extend(transitive_connections)
+
+        # --- 4. CROSS-ORGANIZATIONAL NETWORK EXPANSION ---
+        # If we have QT connections to Google employees, leverage Google's internal network
+        # to find potential paths to ANY Google employee through internal connections
+        existing_qt_connections = [conn for conn in connections if conn.get('source') == 'Google Sheets']
+
+        if len(existing_qt_connections) > 0:
+            logger.debug(f"Found {len(existing_qt_connections)} QT connections to Google - exploring network expansion opportunities")
+            network_expansion_connections = []
+
+            # For each QT connection to a Google employee, explore their network
+            for qt_conn in existing_qt_connections[:2]:  # Limit to 2 connections to avoid performance issues
+                connected_googler_name = qt_conn.get('qtLdap', '')
+
+                # Find this person in our Google employees data
+                connected_googler = None
+                for emp in employees_data[:1000]:  # Search first 1000 for performance
+                    if (emp.get('name', '').lower() == connected_googler_name.lower() or
+                        emp.get('ldap', '') == connected_googler_name or
+                        connected_googler_name.lower() in emp.get('name', '').lower()):
+                        connected_googler = emp
+                        break
+
+                if not connected_googler:
+                    continue
+
+                # Get their hierarchy to explore their network
+                googler_hierarchy = get_employee_hierarchy(connected_googler['ldap'])
+                if not googler_hierarchy:
+                    continue
+
+                # Explore network expansion through their colleagues and connections
+                potential_contacts = []
+
+                # Add their manager (senior person they can introduce you to)
+                if googler_hierarchy.get('manager_chain'):
+                    potential_contacts.extend(googler_hierarchy['manager_chain'][:2])
+
+                # Add their direct reportees (people they manage)
+                if googler_hierarchy.get('reportees'):
+                    potential_contacts.extend(googler_hierarchy['reportees'][:3])
+
+                # Create network expansion connections
+                for contact in potential_contacts:
+                    if contact.get('ldap') == employee_ldap:  # Skip self
+                        continue
+
+                    relationship = "manager" if contact in googler_hierarchy.get('manager_chain', []) else "reportee"
+
+                    network_expansion_connections.append({
+                        'qtLdap': contact.get('ldap'),
+                        'connectionStrength': 'network_expansion',
+                        'declaredBy': 'Network Analysis',
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'notes': f"Network expansion: {connected_googler.get('name')} can introduce you to their {relationship} {contact.get('name')}",
+                        'source': 'Network_Expansion',
+                        'expansion_path': {
+                            'connector': connected_googler.get('name'),
+                            'connector_ldap': connected_googler.get('ldap'),
+                            'relationship': relationship,
+                            'target': contact.get('name'),
+                            'target_ldap': contact.get('ldap')
+                        }
+                    })
+
+            # Limit network expansion results
+            network_expansion_connections = network_expansion_connections[:8]
+
+            if network_expansion_connections:
+                logger.debug(f"Found {len(network_expansion_connections)} network expansion opportunities")
+                connections.extend(network_expansion_connections)
+
+        logger.debug(f"Returning {len(connections)} total connections for {employee_ldap}")
+        return connections
+
+    except Exception as e:
+        # Handle quota exceeded errors silently - don't spam logs
+        if "Quota exceeded" in str(e) or "429" in str(e):
+            # Return empty connections for quota exceeded (graceful degradation)
+            return []
+        logger.error(f"Connections error for {employee_ldap}: {e}")
+        return []
 
 @app.route('/api/connections/<employee_ldap>')
 def get_connections(employee_ldap):
-    """Get actual organizational connections and hierarchy for an employee"""
+    """API endpoint to get connections for an employee"""
     try:
-        hierarchy = get_employee_hierarchy(employee_ldap)
-        
-        if not hierarchy:
-            return jsonify([])
-        
-        connections = []
-        
-        # Add connections to QT team members (Olenick employees) through manager chain
-        for qt_emp in core_team[:5]:  # Limit to first 5 for performance
-            if qt_emp.get('ldap') != employee_ldap:
-                # Create connection path through organizational hierarchy
-                path = [qt_emp.get('ldap')]
-                
-                # If the QT employee is in the manager chain, create direct path
-                manager_ldaps = [mgr.get('ldap') for mgr in hierarchy['manager_chain']]
-                if qt_emp.get('ldap') in manager_ldaps:
-                    path.append(employee_ldap)
-                    strength = 'strong'  # Direct reporting relationship
-                else:
-                    # Create path through common manager or department
-                    if qt_emp.get('department') == hierarchy['employee'].get('department'):
-                        path.append(employee_ldap)
-                        strength = 'medium'  # Same department
-                    else:
-                        # Indirect connection
-                        if hierarchy['manager_chain']:
-                            path.append(hierarchy['manager_chain'][0].get('ldap'))
-                        path.append(employee_ldap)
-                        strength = 'weak'  # Indirect connection
-                
-                connections.append({
-                    'qtLdap': qt_emp.get('ldap'),
-                    'connectionStrength': strength,
-                    'path': path
-                })
-        
+        connections = get_connections_data(employee_ldap)
         return jsonify(connections)
-        
     except Exception as e:
-        logger.error(f"Connections error for {employee_ldap}: {e}")
+        # Handle quota exceeded errors silently - don't spam logs
+        if "Quota exceeded" in str(e) or "429" in str(e):
+            # Return empty connections for quota exceeded (graceful degradation)
+            return jsonify([])
+        logger.error(f"API Connections error for {employee_ldap}: {e}")
         return jsonify([])
 
 @app.route('/api/health')
@@ -1454,7 +1781,7 @@ def internal_error(error):
 def debug_google_sheets_enhanced():
     """Enhanced debug endpoint to test Google Sheets connectivity and permissions"""
     try:
-        logger.info("🔍 Starting enhanced Google Sheets debug...")
+        logger.debug("🔍 Starting enhanced Google Sheets debug...")
         
         debug_info = {
             'timestamp': datetime.now().isoformat(),
@@ -1470,7 +1797,7 @@ def debug_google_sheets_enhanced():
         }
         
         # Test 1: Basic authentication
-        logger.info("🔐 Testing authentication...")
+        logger.debug("🔐 Testing authentication...")
         if not sheet_writer.connector.client:
             auth_success = sheet_writer.connector.authenticate()
             debug_info['tests']['authentication'] = {
@@ -1492,7 +1819,7 @@ def debug_google_sheets_enhanced():
             }
         
         # Test 2: Spreadsheet connection
-        logger.info("📊 Testing spreadsheet connection...")
+        logger.debug("📊 Testing spreadsheet connection...")
         if not sheet_writer.connector.connect_to_spreadsheet():
             debug_info['tests']['spreadsheet_connection'] = {
                 'success': False,
@@ -1513,7 +1840,7 @@ def debug_google_sheets_enhanced():
         }
         
         # Test 3: Connections sheet access/creation
-        logger.info("📋 Testing Connections sheet access...")
+        logger.debug("📋 Testing Connections sheet access...")
         connections_sheet = sheet_writer.get_or_create_connections_sheet()
         if not connections_sheet:
             debug_info['tests']['connections_sheet'] = {
@@ -1532,11 +1859,14 @@ def debug_google_sheets_enhanced():
             'message': 'Connections sheet accessible',
             'sheet_id': connections_sheet.id,
             'sheet_title': connections_sheet.title,
-            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid={connections_sheet.id}"
+            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid={connections_sheet.id}",
+            'row_count': connections_sheet.row_count,
+            'col_count': connections_sheet.col_count,
+            'headers': connections_sheet.row_values(1) if connections_sheet.row_count > 0 else []
         }
         
         # Test 4: Write capability test
-        logger.info("✏️ Testing write capability...")
+        logger.debug("✏️ Testing write capability...")
         try:
             # Write a simple test row
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1556,7 +1886,7 @@ def debug_google_sheets_enhanced():
             ]
             
             connections_sheet.append_row(test_row)
-            logger.info("✅ Write test successful!")
+            logger.debug("✅ Write test successful!")
             
             debug_info['tests']['write_capability'] = {
                 'success': True,
@@ -1599,6 +1929,44 @@ def debug_google_sheets_enhanced():
             'timestamp': datetime.now().isoformat()
         }), 500
 
+@app.route('/api/read-connections-sheet')
+def read_connections_sheet():
+    """Reads and returns the content of the 'Connections' sheet (cached)."""
+    try:
+        logger.debug("📖 Reading connections from cache...")
+
+        # Use cached connections data to avoid quota issues
+        records = get_cached_connections_data()
+
+        logger.debug(f"✅ Retrieved {len(records)} connection records from cache")
+
+        return jsonify({
+            'connections': records,
+            'total_count': len(records),
+            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}",
+            'last_updated': datetime.now().isoformat(),
+            'cached': True,
+            'cache_age_seconds': int(time.time() - (connections_cache_time or 0))
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting connections from sheets: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/debug-employees-data')
+def debug_employees_data():
+    """Debug endpoint to inspect the first few entries of employees_data"""
+    try:
+        if not employees_data:
+            return jsonify({'message': 'employees_data is empty. Data might not have been loaded yet.'}), 200
+        
+        # Return first 10 employees for inspection
+        return jsonify(employees_data[:10])
+    except Exception as e:
+        logger.error(f"Error in debug_employees_data: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 class OptimizedGoogleSheetsWriter:
     """Enhanced connector that can both read and write to Google Sheets - FIXED VERSION"""
@@ -1620,22 +1988,22 @@ class OptimizedGoogleSheetsWriter:
                     logger.error("❌ Cannot connect to spreadsheet")
                     return None
             
-            logger.info("🔍 Looking for 'Connections' sheet...")
+            logger.debug("🔍 Looking for 'Connections' sheet...")
             
             # Try to get existing Connections sheet
             try:
                 connections_sheet = self.connector.spreadsheet.worksheet('Connections')
-                logger.info("✅ Found existing 'Connections' sheet")
+                logger.debug("✅ Found existing 'Connections' sheet")
                 self._connections_sheet = connections_sheet
                 return connections_sheet
             except gspread.WorksheetNotFound:
-                logger.info("📄 'Connections' sheet not found, will create new one...")
+                logger.debug("📄 'Connections' sheet not found, will create new one...")
             except Exception as e:
                 logger.warning(f"⚠️ Error accessing Connections sheet: {e}")
             
             # Create new sheet
             try:
-                logger.info("🆕 Creating new 'Connections' sheet...")
+                logger.debug("🆕 Creating new 'Connections' sheet...")
                 connections_sheet = self.connector.spreadsheet.add_worksheet(
                     title='Connections', 
                     rows=1000, 
@@ -1659,7 +2027,7 @@ class OptimizedGoogleSheetsWriter:
                 ]
                 
                 connections_sheet.append_row(headers)
-                logger.info("✅ Created new 'Connections' sheet with headers")
+                logger.debug("✅ Created new 'Connections' sheet with headers")
                 self._connections_sheet = connections_sheet
                 return connections_sheet
                 
@@ -1724,7 +2092,7 @@ class OptimizedGoogleSheetsWriter:
             
             # Write to sheet
             connections_sheet.append_row(row_data)
-            logger.info(f"✅ Successfully wrote connection: {google_emp.get('name')} <-> {qt_emp.get('name')} ({connection_strength})")
+            logger.debug(f"✅ Successfully wrote connection: {google_emp.get('name')} <-> {qt_emp.get('name')} ({connection_strength})")
             return True
             
         except Exception as e:
@@ -1734,13 +2102,13 @@ class OptimizedGoogleSheetsWriter:
     def write_batch_connections_to_sheet(self, google_employee_ldap, connections_dict, declared_by="System"):
         """FIXED: Write multiple connections to the Google Sheet"""
         try:
-            logger.info(f"📝 Starting batch write: {len(connections_dict)} connections for {google_employee_ldap}")
+            logger.debug(f"📝 Starting batch write: {len(connections_dict)} connections for {google_employee_ldap}")
             
             connections_sheet = self.get_or_create_connections_sheet()
             if not connections_sheet:
                 return False, "Could not access or create Connections sheet"
             
-            logger.info("✅ Connections sheet accessible")
+            logger.debug("✅ Connections sheet accessible")
             
             # Get Google employee with enhanced fallback
             google_emp = get_employee_by_ldap(google_employee_ldap)
@@ -1753,17 +2121,17 @@ class OptimizedGoogleSheetsWriter:
                     'department': 'Unknown'
                 }
             
-            logger.info(f"📋 Google employee: {google_emp.get('name')} ({google_emp.get('ldap')})")
+            logger.debug(f"📋 Google employee: {google_emp.get('name')} ({google_emp.get('ldap')})")
             
             # Prepare batch data
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             rows_to_add = []
             successful_connections = []
             
-            logger.info(f"🔄 Processing {len(connections_dict)} connections...")
+            logger.debug(f"🔄 Processing {len(connections_dict)} connections...")
             
             for qt_ldap, strength in connections_dict.items():
-                logger.info(f"  Processing: {qt_ldap} -> {strength}")
+                logger.debug(f"  Processing: {qt_ldap} -> {strength}")
                 
                 # Find QT employee with enhanced fallback
                 qt_emp = next((emp for emp in core_team if emp.get('ldap') == qt_ldap), None)
@@ -1776,7 +2144,7 @@ class OptimizedGoogleSheetsWriter:
                         'department': 'QT Team'
                     }
                 
-                logger.info(f"    📋 QT employee: {qt_emp.get('name')}")
+                logger.debug(f"    📋 QT employee: {qt_emp.get('name')}")
                 
                 row_data = [
                     timestamp,
@@ -1795,14 +2163,14 @@ class OptimizedGoogleSheetsWriter:
                 
                 rows_to_add.append(row_data)
                 successful_connections.append(f"{qt_emp.get('name')} ({strength})")
-                logger.info(f"    ✅ Row prepared for {qt_emp.get('name')}")
+                logger.debug(f"    ✅ Row prepared for {qt_emp.get('name')}")
             
             if rows_to_add:
-                logger.info(f"📤 Writing {len(rows_to_add)} rows to Google Sheets...")
+                logger.debug(f"📤 Writing {len(rows_to_add)} rows to Google Sheets...")
                 try:
                     # Write all rows at once for better performance
                     connections_sheet.append_rows(rows_to_add)
-                    logger.info(f"🎉 Successfully wrote {len(rows_to_add)} connections to Google Sheets!")
+                    logger.debug(f"🎉 Successfully wrote {len(rows_to_add)} connections to Google Sheets!")
                     
                     success_message = f"Successfully saved {len(rows_to_add)} connections to Google Sheets 'Connections' tab: {', '.join(successful_connections)}"
                     return True, success_message
@@ -1839,10 +2207,10 @@ def batch_update_connections_enhanced():
         connections = data.get('connections', {})
         declared_by = data.get('declaredBy', 'Qonnect User')
         
-        logger.info(f"🎯 Connection update request received:")
-        logger.info(f"  Google LDAP: {google_ldap}")
-        logger.info(f"  Connections: {len(connections)} items")
-        logger.info(f"  Data: {connections}")
+        logger.debug(f"🎯 Connection update request received:")
+        logger.debug(f"  Google LDAP: {google_ldap}")
+        logger.debug(f"  Connections: {len(connections)} items")
+        logger.debug(f"  Data: {connections}")
         
         if not google_ldap or not connections:
             logger.error("❌ Missing required data")
@@ -1857,7 +2225,7 @@ def batch_update_connections_enhanced():
             }), 400
         
         # Update in-memory data (existing functionality)
-        logger.info("💾 Updating in-memory data...")
+        logger.debug("💾 Updating in-memory data...")
         google_employee = get_employee_by_ldap(google_ldap)
         if google_employee:
             # Initialize connections if not exists
@@ -1872,7 +2240,7 @@ def batch_update_connections_enhanced():
                 
                 if existing_conn:
                     existing_conn['connectionStrength'] = strength
-                    logger.info(f"  ✏️ Updated existing connection: {qt_ldap} -> {strength}")
+                    logger.debug(f"  ✏️ Updated existing connection: {qt_ldap} -> {strength}")
                 else:
                     # Add new connection
                     qt_employee = next((emp for emp in core_team if emp.get('ldap') == qt_ldap), None)
@@ -1882,12 +2250,12 @@ def batch_update_connections_enhanced():
                             'name': qt_employee.get('name'),
                             'connectionStrength': strength
                         })
-                        logger.info(f"  ➕ Added new connection: {qt_ldap} -> {strength}")
+                        logger.debug(f"  ➕ Added new connection: {qt_ldap} -> {strength}")
         
-        logger.info("✅ In-memory data updated successfully")
+        logger.debug("✅ In-memory data updated successfully")
         
         # Write to Google Sheets with enhanced error handling
-        logger.info("📝 Attempting to write to Google Sheets...")
+        logger.debug("📝 Attempting to write to Google Sheets...")
         try:
             success, message = sheet_writer.write_batch_connections_to_sheet(
                 google_ldap, 
@@ -1896,7 +2264,9 @@ def batch_update_connections_enhanced():
             )
             
             if success:
-                logger.info(f"🎉 Google Sheets write successful!")
+                logger.debug(f"🎉 Google Sheets write successful!")
+                # Invalidate cache since we just wrote new data
+                invalidate_connections_cache()
                 return jsonify({
                     'success': True,
                     'updated_count': len(connections),
@@ -1946,39 +2316,40 @@ def batch_update_connections_enhanced():
 # New endpoint to view connections from Google Sheets
 @app.route('/api/connections-from-sheets')
 def get_connections_from_sheets():
-    """Get all connections from the Google Sheets Connections tab"""
+    """Get all connections from the Google Sheets Connections tab (cached)"""
     try:
-        logger.info("📖 Reading connections from Google Sheets...")
-        connections_sheet = sheet_writer.get_or_create_connections_sheet()
-        if not connections_sheet:
-            return jsonify({'error': 'Could not access Connections sheet'}), 500
-        
-        # Get all records
-        records = connections_sheet.get_all_records()
-        
-        logger.info(f"✅ Retrieved {len(records)} connection records")
-        
+        logger.debug("📖 Getting connections from cache...")
+
+        # Use cached data to avoid API quota issues
+        records = get_cached_connections_data()
+
+        logger.debug(f"✅ Retrieved {len(records)} connection records from cache")
+
         return jsonify({
             'connections': records,
             'total_count': len(records),
-            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}&gid={connections_sheet.id}",
-            'last_updated': datetime.now().isoformat()
+            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}",
+            'last_updated': datetime.now().isoformat(),
+            'cached': True,
+            'cache_age_seconds': int(time.time() - (connections_cache_time or 0))
         })
-        
+
     except Exception as e:
-        logger.error(f"❌ Error getting connections from sheets: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"❌ Error getting connections: {e}")
+        return jsonify({
+            'error': str(e),
+            'connections': [],
+            'total_count': 0,
+            'cached': False
+        }), 500
 
 # New endpoint to get connection statistics
 @app.route('/api/connection-stats')
 def get_connection_stats():
-    """Get statistics about declared connections"""
+    """Get statistics about declared connections (cached)"""
     try:
-        connections_sheet = sheet_writer.get_or_create_connections_sheet()
-        if not connections_sheet:
-            return jsonify({'error': 'Could not access Connections sheet'}), 500
-        
-        records = connections_sheet.get_all_records()
+        # Use cached data to avoid API quota issues
+        records = get_cached_connections_data()
         
         # Calculate statistics
         stats = {
@@ -2001,56 +2372,6 @@ def get_connection_stats():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("🚀 Qonnect - FIXED Google Sheets System")
-    print("=" * 60)
-    print("🔧 CRITICAL FIXES APPLIED:")
-    print("   ✅ FIXED search to find actual employees (not their reportees)")
-    print("   ✅ FIXED hierarchy building with manager email relationships")
-    print("   ✅ Enhanced sample data with proper organizational structure")
-    print("   ✅ Fixed all API endpoints for proper data flow")
-    print("   ✅ Improved error handling and data validation")
-    print()
-    print("🎯 OPTIMIZATIONS ENABLED:")
-    print("   ✅ Batch processing for large datasets")
-    print("   ✅ Memory management and garbage collection")
-    print("   ✅ Cached employee lookups (LRU cache)")
-    print("   ✅ Optimized API endpoints with reduced payloads")
-    print("   ✅ Efficient data structures and algorithms")
-    print()
-    print("📊 HIERARCHY STRUCTURE:")
-    print("   Manager Email → Reports to this manager")
-    print("   Search 'ashwink' → Returns ashwink (not his reports)")
-    print("   Click ashwink → Shows hierarchy with his reportees")
-    print()
-    print("📄 Google Sheets Configuration:")
-    print(f"   Spreadsheet: {GOOGLE_SHEETS_CONFIG['spreadsheet_id']}")
-    print(f"   Credentials: {'✅ Found' if os.path.exists(GOOGLE_SHEETS_CONFIG['service_account_file']) else '❌ Not found'}")
-    print()
-    
-    # Load data with optimizations
-    print("📊 Loading data with optimizations...")
-    success = load_google_sheets_data_optimized()
-    
-    if success:
-        print("🎉 Fixed loading complete!")
-        print(f"   📊 Total employees: {len(employees_data):,}")
-        print(f"   📊 Google employees: {len(google_employees):,}")
-        print(f"   📊 Processing time: {processing_stats.get('processing_time', 0):.2f}s")
-        print(f"   📊 Processing rate: {len(employees_data) / max(processing_stats.get('processing_time', 1), 0.1):,.0f} records/sec")
-        
-        # Test hierarchy for ashwink
-        ashwin_hierarchy = get_employee_hierarchy('ashwink')
-        if ashwin_hierarchy:
-            print(f"   📊 Ashwin has {len(ashwin_hierarchy['reportees'])} direct reports")
-    else:
-        print("⚠️ Using sample data for testing")
-    
-    print(f"\n🌐 Starting FIXED Flask app on http://localhost:8080")
-    print("🔧 Key endpoints:")
-    print("   • GET  /                         - Dashboard")
-    print("   • GET  /search                   - FIXED hierarchy search")
-    print("   • GET  /declare                  - Declare connections")
-    print("   • GET  /api/search-employees     - FIXED employee search")
-    print("   • GET  /api/hierarchy/<ldap>     - Get employee hierarchy")
+    print("🚀 Qonnect - Starting on http://localhost:8080")
     
     app.run(debug=True, port=8080, threaded=True)

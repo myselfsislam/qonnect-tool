@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qonnect - Organization Hierarchy Chart</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    
+    <style>
+        .unified-card {
+        position: relative;
+        width: 200px;
+        background-color: white;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        transition: all 0.3s ease-in-out;
+        display: flex;
+        flex-direction: column;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        border: 2px solid #e5e7eb;
+      }
+      .unified-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 44px 8px -1px rgb(0 0 0 / 0.1);
+      }
+      .google-border {
+        border: 3px solid transparent;
+        border-image-slice: 1;
+        border-image-source: linear-gradient(90deg, #4285f4, #db4437, #f4b400, #0f9d58);
+      }
+      .qt-border {
+        border: 3px solid #5748c3;
+      }
+      .bg-primary {
+        background-color: #2a2559;
+      }
+      .text-primary {
+        color: #2a2559;
+      }
+
+      /* Declared Connections Hierarchy Styles */
+      .declared-connections-section {
+        position: relative;
+        padding: 2rem 0;
+      }
+
+      .declared-connector {
+        position: relative;
+        background: linear-gradient(to bottom, #10b981, #059669);
+        box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+      }
+
+      .declared-connector::before {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 0;
+        height: 0;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-top: 8px solid #059669;
+      }
+
+      .qt-connection-card {
+        position: relative;
+        transform: scale(0.95);
+        transition: all 0.3s ease;
+      }
+
+      .qt-connection-card:hover {
+        transform: scale(1) translateY(-5px);
+        z-index: 10;
+      }
+
+        .step-badge {
+            position: absolute;
+            top: -12px;
+            right: -12px;
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(to bottom right, #dbeafe, #ede9fe);
+            color: #2a2559;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .connection-strength-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            border-radius: 8px;
+            text-transform: uppercase;
+            z-index: 10;
+        }
+
+        .strength-strong {
+            background: linear-gradient(to bottom right, #dbeafe, #ede9fe);
+            color: #2a2559;
+        }
+
+        .strength-medium {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .strength-weak {
+            background: #ef4444;
+            color: white;
+        }
+
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 50;
+        }
+
+        .suggestion-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background-color 0.2s ease;
+            cursor: pointer;
+        }
+
+        .suggestion-item:hover {
+            background-color: #f9fafb;
+        }
+
+        .dotted-bg {
+            background-image: radial-gradient(circle, #d1d5db 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-color: #f9fafb;
+        }
+
+        .connection-line {
+            position: absolute;
+            background: #d1d5db;
+            z-index: 1;
+        }
+
+        .vertical-line {
+            width: 2px;
+            height: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .horizontal-line {
+            height: 2px;
+            width: 100px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        /* Transitive Connection Lines */
+        .transitive-connection-container {
+            position: relative;
+        }
+
+        .connection-hub {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hub-lines {
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .hub-line {
+            position: absolute;
+            background: #3b82f6;
+            height: 2px;
+            transform-origin: left center;
+        }
+
+        .vertical-connector {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            background: #3b82f6;
+            z-index: 1;
+        }
+
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-900">
+    <nav class="w-full p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
+        <div class="container mx-auto flex items-center justify-between">
+            <a href="/" class="flex items-center gap-5">
+                <i class="fas fa-project-diagram text-2xl text-primary text-white"></i>
+                <h1 class="text-2xl font-bold text-white">Qonnect</h1>
+            </a>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl p-8 mx-auto">
+        <div class="text-center mb-8">
+            <h1 class="text-2xl font-bold">Organization Hierarchy Chart</h1>
+            <p class="text-gray-600 mt-2">Search for Google employees to find the shortest connection path from the QT team.</p>
+        </div>
+
+        <div class="flex justify-center mb-8">
+            <div class="relative w-full max-w-md">
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"></i>
+                    <input type="text" id="searchInput" placeholder="Search Google employees..." 
+                           class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div id="suggestions" class="suggestions hidden"></div>
+            </div>
+        </div>
+
+        <div id="mainContent">
+            <div class="text-center text-gray-500 py-16">
+                <p>Search and select a Google employee to find the shortest connection path from the QT team.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let googleEmployees = [];
+        let coreTeam = [];
+        let selectedEmployee = null;
+        let connectionData = [];
+        const employeeMap = new Map();
+
+        async function loadFlaskData() {
+            try {
+                console.log('Loading data from Flask API...');
+                
+                const googleResponse = await fetch('/api/google-employees');
+                if (googleResponse.ok) {
+                    const data = await googleResponse.json();
+                    googleEmployees = data.map(emp => ({
+                        ldap: emp.ldap,
+                        email: emp.email || emp.ldap + '@google.com',
+                        avatar: emp['MOMA Photo URL'] || emp.avatar || null,
+                        name: emp.name,
+                        company: emp.company || "GOOGLE",
+                        designation: emp.designation,
+                        organisation: emp.organisation || emp.department || "Google",
+                        manager: emp.manager || null,
+                    }));
+                }
+
+                const qtResponse = await fetch('/api/qt-team');
+                if (qtResponse.ok) {
+                    const qtData = await qtResponse.json();
+                    if (qtData && qtData.length > 0) {
+                        coreTeam = qtData.map(emp => ({
+                            ldap: emp.ldap,
+                            email: emp.email || emp.ldap + '@qualitestgroup.com',
+                            avatar: emp.avatar || null,
+                            name: emp.name,
+                            company: emp.company || "QT",
+                            designation: emp.designation,
+                            organisation: emp.organisation || emp.department || "QT",
+                        }));
+                    } else {
+                        throw new Error('QT team data is empty');
+                    }
+                } else {
+                    throw new Error('Failed to load QT team data');
+                }
+
+                const connectionsResponse = await fetch('/api/connections-from-sheets');
+                if (connectionsResponse.ok) {
+                    const sheetsData = await connectionsResponse.json();
+                    connectionData = sheetsData.connections || [];
+                }
+                
+                console.log('API data loaded successfully');
+                
+            } catch (error) {
+                console.error('Error loading data from API:', error.message);
+                console.log('Using hardcoded QT team data as fallback.');
+                
+                // Keep hardcoded coreTeam data as fallback
+                coreTeam = [
+                    {
+                        ldap: 'lihi.segev',
+                        name: 'Lihi Segev',
+                        email: 'lihi.segev@qualitest.com',
+                        designation: 'Executive Vice President',
+                        company: 'QT',
+                        organisation: 'QT Team',
+                    },
+                    {
+                        ldap: 'omri.nissim',
+                        name: 'Omri Nissim',
+                        email: 'omri.nissim@qualitest.com',
+                        designation: 'Vice President',
+                        company: 'QT',
+                        organisation: 'QT Team',
+                    },
+                    {
+                        ldap: 'mayank.arya',
+                        name: 'Mayank Arya',
+                        email: 'mayank.arya@qualitest.com',
+                        designation: 'Manager',
+                        company: 'QT',
+                        organisation: 'QT Team',
+                    },
+                    {
+                        ldap: 'a.bagade',
+                        name: 'A Bagade',
+                        email: 'a.bagade@qualitest.com',
+                        designation: 'Manager',
+                        company: 'QT',
+                        organisation: 'QT Team',
+                    },
+                    {
+                        ldap: 'lihis',
+                        name: 'Lihis',
+                        email: 'lihis@qualitest.com',
+                        designation: 'Executive',
+                        company: 'QT',
+                        organisation: 'QT Team',
+                    },
+                    {
+                        ldap: 'omrinis',
+                        name: 'Omrinis',
+                        email: 'omrinis@qualitest.com',
+                        designation: 'Manager',
+                        company: 'QT',
+                        organisation: 'QT Team',
+                    }
+                ];
+                // googleEmployees and connectionData will remain empty if API fails
+            }
+        }
+
+        function getInitials(name) {
+            if (!name) return 'NA';
+            return name.split(' ').map(word => word.charAt(0).toUpperCase()).join('').substring(0, 2);
+        }
+
+        function isValidImageUrl(url) {
+            return url && url.trim() !== '' && (url.startsWith('http://') || url.startsWith('https://'));
+        }
+
+        function updateEmployeeMap() {
+            employeeMap.clear();
+            googleEmployees.forEach((e) => employeeMap.set(e.ldap, e));
+            coreTeam.forEach((e) => employeeMap.set(e.ldap, e));
+        }
+
+
+
+        function createEmployeeCard(employee, isTarget = false, stepCount = null, connectionStrength = null) {
+            if (!employee) return document.createElement("div");
+
+            const card = document.createElement("div");
+            let borderClass = '';
+            if (employee.company === 'QT') {
+                borderClass = 'qt-border';
+            } else {
+                borderClass = 'google-border';
+            }
+            card.className = `unified-card ${borderClass}`;
+            
+            let stepBadge = "";
+            if (stepCount !== null && stepCount > 0) {
+                stepBadge = `<div class="step-badge">${stepCount}</div>`;
+            }
+
+            let strengthBadge = "";
+            if (connectionStrength) {
+                strengthBadge = `<div class="connection-strength-badge strength-${connectionStrength.toLowerCase()}">${connectionStrength}</div>`;
+            }
+
+            let avatarHtml = '';
+            if (isValidImageUrl(employee.avatar)) {
+                avatarHtml = `<img src="${employee.avatar}" alt="${employee.name}" class="w-16 h-16 rounded-full mb-2 border-2 border-gray-300 shadow object-cover" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="w-16 h-16 rounded-full mb-2 border-2 border-gray-300 shadow bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center" style="display:none;">
+                  <span class="text-xl font-bold text-gray-600">${getInitials(employee.name)}</span>
+                </div>`;
+            } else {
+                avatarHtml = `<div class="w-16 h-16 rounded-full mb-2 border-2 border-gray-300 shadow bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+                  <span class="text-xl font-bold text-gray-600">${getInitials(employee.name)}</span>
+                </div>`;
+            }
+
+            // Remove declared connections info from employee cards - keeping hierarchy clean
+
+            card.innerHTML = `${stepBadge}${strengthBadge}
+          <div class="flex-1 flex flex-col items-center text-center justify-center">
+            ${avatarHtml}
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-primary">${employee.company === 'QT' ? '' : employee.organisation || employee.company}</p>
+            <h4 class="font-bold text-md text-gray-800">${employee.name}</h4>
+            <p class="text-xs text-gray-500">${employee.designation}</p>
+            <p class="text-[10px] text-gray-400 mt-1 font-mono">${employee.ldap}</p>
+          </div>`;
+            
+            return card;
+        }
+
+        function getConnectionsForEmployee(employee) {
+            console.log('Looking for connections for employee:', employee.name, employee.ldap, employee.email);
+            
+            const connections = connectionData.filter(conn => {
+                const googleLdap = conn['Google Employee LDAP'] ? conn['Google Employee LDAP'].trim().toLowerCase() : '';
+                const googleEmail = conn['Google Employee Email'] ? conn['Google Employee Email'].trim().toLowerCase() : '';
+                const googleName = conn['Google Employee Name'] ? conn['Google Employee Name'].trim().toLowerCase() : '';
+                
+                const empLdap = employee.ldap ? employee.ldap.trim().toLowerCase() : '';
+                const empEmail = employee.email ? employee.email.trim().toLowerCase() : '';
+                const empName = employee.name ? employee.name.trim().toLowerCase() : '';
+                
+                const match = googleLdap === empLdap || 
+                             googleEmail === empEmail ||
+                             googleName === empName ||
+                             (googleLdap && empLdap && googleLdap.includes(empLdap)) ||
+                             (empLdap && googleLdap && empLdap.includes(googleLdap));
+                
+                if (match) {
+                    console.log('Connection found:', conn);
+                }
+                
+                return match;
+            });
+            
+            console.log('Total connections found for', employee.name, ':', connections.length);
+            return connections;
+        }
+
+        function findQTEmployee(qtLdap, qtName, qtEmail) {
+            let qtEmployee = coreTeam.find((e) => 
+                e.ldap === qtLdap || 
+                e.email === qtEmail || 
+                e.name === qtName
+            );
+            
+            if (qtEmployee) {
+                return qtEmployee;
+            }
+            
+            if (qtName && qtLdap) {
+                return {
+                    ldap: qtLdap,
+                    name: qtName,
+                    email: qtEmail || qtLdap + '@qualitest.com',
+                    company: "QT",
+                    designation: "QT Team Member",
+                    avatar: null
+                };
+            }
+            
+            return null;
+        }
+
+        function findShortestPath(startLdap, endLdaps) {
+            const graph = new Map();
+            console.log('Building graph...');
+
+            // Create a map of email to ldap for Google employees
+            const emailToLdap = new Map();
+            googleEmployees.forEach(emp => {
+                if (emp.email && emp.ldap) {
+                    emailToLdap.set(emp.email.toLowerCase(), emp.ldap);
+                }
+            });
+
+            // Add all employees to the graph
+            [...googleEmployees, ...coreTeam].forEach(emp => {
+                if (emp.ldap && !graph.has(emp.ldap)) {
+                    graph.set(emp.ldap, []);
+                }
+            });
+
+            // Add manager connections
+            googleEmployees.forEach(emp => {
+                if (emp.ldap && emp.manager) {
+                    let managerIdentifier = emp.manager; // This could be LDAP or email
+                    let managerLdapKey = managerIdentifier; // Key to use in graph/employeeMap
+
+                    // If managerIdentifier is an email, try to resolve it to an LDAP
+                    if (managerIdentifier.includes('@')) {
+                        const resolvedFromEmail = emailToLdap.get(managerIdentifier.toLowerCase());
+                        if (resolvedFromEmail) {
+                            managerLdapKey = resolvedFromEmail; // Use LDAP if found
+                        } else {
+                            // If email and not found, use the email as the unique key for a placeholder
+                            managerLdapKey = managerIdentifier.toLowerCase(); 
+                        }
+                    }
+
+                    // If manager is not in our known employees (by managerLdapKey), create a placeholder
+                    if (!employeeMap.has(managerLdapKey)) {
+                        const unknownManager = {
+                            ldap: managerLdapKey,
+                            name: `Manager (${managerIdentifier})`,
+                            email: managerIdentifier.includes('@') ? managerIdentifier : `${managerLdapKey}@google.com`,
+                            company: "GOOGLE",
+                            designation: "Unknown Manager",
+                            organisation: "Google",
+                            avatar: null,
+                            isPlaceholder: true
+                        };
+                        employeeMap.set(managerLdapKey, unknownManager);
+                        graph.set(managerLdapKey, []); // Initialize neighbors for placeholder
+                    }
+                    
+                    // Now add the edge using the consistent managerLdapKey
+                    // Ensure both employee and manager exist in the graph
+                    if (graph.has(emp.ldap) && graph.has(managerLdapKey)) {
+                        graph.get(emp.ldap).push(managerLdapKey);
+                        graph.get(managerLdapKey).push(emp.ldap);
+                    }
+                }
+            });
+
+            // Add direct connections
+            connectionData.forEach(conn => {
+                const googleLdap = conn['Google Employee LDAP'];
+                const qtLdap = conn['QT Employee LDAP'];
+                if (googleLdap && qtLdap && graph.has(googleLdap) && graph.has(qtLdap)) {
+                    graph.get(googleLdap).push(qtLdap);
+                    graph.get(qtLdap).push(googleLdap);
+                }
+            });
+
+            console.log('Graph:', graph);
+
+            const queue = [[startLdap, [startLdap]]];
+            const visited = new Set([startLdap]);
+            const shortestPaths = new Map(); // To store shortest paths to each endLdap
+
+            while (queue.length > 0) {
+                console.log('Queue:', queue);
+                const [currentLdap, path] = queue.shift();
+
+                if (endLdaps.has(currentLdap) && !shortestPaths.has(currentLdap)) {
+                    shortestPaths.set(currentLdap, path);
+                }
+
+                const neighbors = graph.get(currentLdap) || [];
+                console.log('Neighbors of', currentLdap, ':', neighbors);
+                for (const neighbor of neighbors) {
+                    if (!visited.has(neighbor)) {
+                        visited.add(neighbor);
+                        const newPath = [...path, neighbor];
+                        queue.push([neighbor, newPath]);
+                    }
+                }
+            }
+
+            console.log('Shortest paths found:', shortestPaths);
+            return shortestPaths; // Return a map of shortest paths to each endLdap
+        }
+
+        async function renderConnectionPaths(employee) {
+            console.log('Rendering connection paths for:', employee);
+
+            // Load declared connections asynchronously for better performance
+            try {
+                const connectionsResponse = await fetch(`/api/connections/${employee.ldap}`);
+                const declaredConnections = await connectionsResponse.json();
+                employee.declared_connections = declaredConnections || [];
+            } catch (error) {
+                console.warn('Failed to load connections for', employee.ldap, ':', error);
+                employee.declared_connections = [];
+            }
+
+            // Load hierarchy data to check for manager connections
+            let managerConnections = [];
+            try {
+                const hierarchyResponse = await fetch(`/api/hierarchy/${employee.ldap}`);
+                const hierarchyData = await hierarchyResponse.json();
+
+                // Check connections for each manager in the chain
+                const seenQTConnections = new Set();
+                if (hierarchyData.manager_chain) {
+                    for (const manager of hierarchyData.manager_chain) {
+                        try {
+                            const managerConnectionsResponse = await fetch(`/api/connections/${manager.ldap}`);
+                            const managerDeclaredConnections = await managerConnectionsResponse.json();
+                            if (managerDeclaredConnections && managerDeclaredConnections.length > 0) {
+                                // Add manager context to connections, but only if we haven't seen this QT connection before
+                                const connectionsWithManager = managerDeclaredConnections
+                                    .filter(conn => !seenQTConnections.has(conn.qtLdap))
+                                    .map(conn => {
+                                        seenQTConnections.add(conn.qtLdap);
+                                        return {
+                                            ...conn,
+                                            throughManager: manager.name,
+                                            managerLdap: manager.ldap,
+                                            source: 'Manager Connection'
+                                        };
+                                    });
+                                managerConnections.push(...connectionsWithManager);
+                            }
+                        } catch (error) {
+                            console.warn('Failed to load connections for manager', manager.ldap, ':', error);
+                        }
+                    }
+                }
+
+                // Combine direct and manager connections
+                employee.declared_connections = [...employee.declared_connections, ...managerConnections];
+            } catch (error) {
+                console.warn('Failed to load hierarchy data for', employee.ldap, ':', error);
+            }
+
+                        const content = document.createElement("div");
+                        content.className = "dotted-bg min-h-screen p-8";
+            
+                        const endLdaps = new Set(connectionData.map(c => c['QT Employee LDAP']));
+                        const shortestPaths = findShortestPath(employee.ldap, endLdaps);
+            
+                        // Check if we have any connections to show (discovered OR declared)
+                        const hasDeclaredConnections = employee.declared_connections && employee.declared_connections.length > 0;
+                        const hasDiscoveredConnections = shortestPaths.size > 0;
+
+                        // Initialize connection type arrays for unified display (managerConnections already declared above)
+                        const directConnections = employee.declared_connections ? employee.declared_connections.filter(conn => conn.source === 'Google Sheets') : [];
+                        const transitiveConnections = employee.declared_connections ? employee.declared_connections.filter(conn => conn.source === 'Transitive') : [];
+                        const networkExpansionConnections = employee.declared_connections ? employee.declared_connections.filter(conn => conn.source === 'Network_Expansion') : [];
+
+                        // Add declared connections to existing managerConnections array
+                        if (employee.declared_connections) {
+                            const declaredManagerConnections = employee.declared_connections.filter(conn => conn.source === 'Manager Connection');
+                            managerConnections.push(...declaredManagerConnections);
+                        }
+
+                        if (hasDiscoveredConnections || hasDeclaredConnections) {
+                            const pathsContainer = document.createElement("div");
+                            pathsContainer.className = "flex flex-col items-center gap-2"; // Container for all paths
+            
+                            const directConnections = [];
+                            const indirectConnections = [];
+            
+                            shortestPaths.forEach((path, qtLdap) => {
+                                if (path.length === 2) {
+                                    directConnections.push(path);
+                                } else {
+                                    indirectConnections.push(path);
+                                }
+                            });
+            
+                            // Always display the searched employee at the top
+                            const searchedEmployeeCard = createEmployeeCard(employee, true);
+                            pathsContainer.appendChild(searchedEmployeeCard);
+
+                            // Create single unified connections display
+                            const unifiedConnectionsSection = document.createElement("div");
+                            unifiedConnectionsSection.className = "flex flex-col items-center gap-6";
+
+                            // Single title for all connections
+                            const connectionsTitle = document.createElement("div");
+                            connectionsTitle.className = "text-center mb-4";
+                            connectionsTitle.innerHTML = '<h3 class="text-lg font-bold text-green-700 mb-2">QT Team Connections</h3>';
+                            unifiedConnectionsSection.appendChild(connectionsTitle);
+
+                            // Single row for all QT connections
+                            const allQTConnectionsRow = document.createElement("div");
+                            allQTConnectionsRow.className = "flex gap-4 flex-wrap justify-center";
+
+                            // PRIORITY: Show Declared Connections First (if any)
+                            if (employee.declared_connections && employee.declared_connections.length > 0) {
+                                console.log('Showing declared connections:', employee.declared_connections);
+
+                                // Add section title
+                                const declaredTitle = document.createElement("div");
+                                declaredTitle.className = "text-center mt-2 mb-2";
+                                // declaredTitle.innerHTML = '<h3 class="text-lg font-bold text-green-700 mb-2">Declared Connections</h3><p class="text-sm text-gray-600">Direct connections declared in Google Sheets</p>';
+                                pathsContainer.appendChild(declaredTitle);
+
+                                // Connector line from employee to declared connections (minimized spacing)
+                                const declaredConnector = document.createElement("div");
+                                declaredConnector.className = "h-3 w-1 declared-connector";
+                                pathsContainer.appendChild(declaredConnector);
+
+                                // Connection arrays are now defined in higher scope for unified display
+
+                                // Old direct connections section - now handled by unified display
+
+                                // Old manager connections section - now handled by unified display
+
+                                // Create transitive connections section - DISABLED (now using unified display)
+                                if (false && transitiveConnections.length > 0) {
+                                    const transitiveSection = document.createElement("div");
+                                    transitiveSection.className = "flex flex-col items-center gap-4";
+
+                                    const transitiveTitle = document.createElement("div");
+                                    transitiveTitle.className = "text-center mb-2";
+                                    transitiveTitle.innerHTML = '<h4 class="text-sm font-bold text-blue-600 mb-1">Transitive Connections</h4><p class="text-xs text-gray-500">Through direct reports</p>';
+                                    transitiveSection.appendChild(transitiveTitle);
+
+                                    // Group transitive connections by intermediate person
+                                    const connectionsByIntermediate = new Map();
+                                    transitiveConnections.forEach(conn => {
+                                        const intermediateKey = conn.intermediatePerson ? conn.intermediatePerson.ldap : 'unknown';
+                                        if (!connectionsByIntermediate.has(intermediateKey)) {
+                                            connectionsByIntermediate.set(intermediateKey, {
+                                                intermediatePerson: conn.intermediatePerson,
+                                                qtConnections: []
+                                            });
+                                        }
+                                        connectionsByIntermediate.get(intermediateKey).qtConnections.push(conn);
+                                    });
+
+                                    const transitiveRow = document.createElement("div");
+                                    transitiveRow.className = "flex justify-center items-start gap-8 flex-wrap";
+
+                                    // Create one container per intermediate person
+                                    connectionsByIntermediate.forEach((groupData, intermediateKey) => {
+                                        const transitiveGroupContainer = document.createElement("div");
+                                        transitiveGroupContainer.className = "flex flex-col items-center gap-2";
+
+                                        // Intermediate person card (show once)
+                                        if (groupData.intermediatePerson) {
+                                            const intermediateEmployee = {
+                                                name: groupData.intermediatePerson.name,
+                                                ldap: groupData.intermediatePerson.ldap,
+                                                email: groupData.intermediatePerson.email,
+                                                department: 'Google',
+                                                company: 'GOOGLE',
+                                                organisation: 'Google',
+                                                designation: 'Manager'
+                                            };
+                                            const intermediateCard = createEmployeeCard(intermediateEmployee, false, 1);
+                                            intermediateCard.classList.add("intermediate-connection-card");
+                                            intermediateCard.style.transform = "scale(0.9)";
+                                            intermediateCard.style.opacity = "0.8";
+
+                                            // Add "VIA" badge to intermediate card
+                                            const viaBadge = document.createElement("div");
+                                            viaBadge.className = "absolute -top-2 -left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-bold";
+                                            viaBadge.innerHTML = "VIA";
+                                            intermediateCard.style.position = "relative";
+                                            intermediateCard.appendChild(viaBadge);
+                                            transitiveGroupContainer.appendChild(intermediateCard);
+
+                                            // Add simple arrow between intermediate and QT employees
+                                            const arrow = document.createElement("div");
+                                            arrow.className = "text-gray-400 text-lg";
+                                            arrow.innerHTML = "↓";
+                                            transitiveGroupContainer.appendChild(arrow);
+                                        }
+
+                                        // Create row of QT employees connected through this intermediate
+                                        const qtEmployeesRow = document.createElement("div");
+                                        qtEmployeesRow.className = "flex justify-center items-center gap-2 flex-wrap";
+
+                                        groupData.qtConnections.forEach(conn => {
+                                            // Find the QT employee details
+                                            let qtEmployee = coreTeam.find(emp => emp.ldap === conn.qtLdap);
+                                            if (!qtEmployee) {
+                                                qtEmployee = {
+                                                    ldap: conn.qtLdap,
+                                                    name: conn.qtLdap.replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                                                    designation: 'QT Team Member',
+                                                    company: 'QT',
+                                                    organisation: 'QT',
+                                                    avatar: null
+                                                };
+                                            }
+
+                                            // QT employee card (smaller for transitive)
+                                            const card = createEmployeeCard(qtEmployee, false, 2, conn.connectionStrength);
+                                            card.classList.add("qt-connection-card");
+                                            card.style.transform = "scale(0.75)"; // Smaller for transitive
+                                            qtEmployeesRow.appendChild(card);
+                                        });
+
+                                        transitiveGroupContainer.appendChild(qtEmployeesRow);
+                                        transitiveRow.appendChild(transitiveGroupContainer);
+                                    });
+
+                                    transitiveSection.appendChild(transitiveRow);
+                                    // allConnectionsRow.appendChild(transitiveSection); // Now handled by unified display
+                                }
+
+                                // Create network expansion connections section
+                                if (networkExpansionConnections.length > 0) {
+                                    const expansionSection = document.createElement("div");
+                                    expansionSection.className = "flex flex-col items-center gap-4";
+
+                                    const expansionTitle = document.createElement("div");
+                                    expansionTitle.className = "text-center mb-2";
+                                    expansionTitle.innerHTML = '<h4 class="text-sm font-bold text-purple-600 mb-1">🌐 Network Expansion Opportunities</h4><p class="text-xs text-gray-500">Leverage existing connections to reach new contacts</p>';
+                                    expansionSection.appendChild(expansionTitle);
+
+                                    const expansionRow = document.createElement("div");
+                                    expansionRow.className = "flex justify-center items-center gap-4 flex-wrap";
+
+                                    networkExpansionConnections.forEach(conn => {
+                                        // Find the target Google employee details
+                                        let targetEmployee = googleEmployees.find(emp => emp.ldap === conn.qtLdap);
+                                        if (!targetEmployee) {
+                                            targetEmployee = {
+                                                ldap: conn.qtLdap,
+                                                name: conn.expansion_path?.target || conn.qtLdap.replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                                                designation: 'Google Employee',
+                                                company: 'Google',
+                                                organisation: 'Google',
+                                                avatar: null
+                                            };
+                                        }
+
+                                        // Create container for network expansion path
+                                        const expansionContainer = document.createElement("div");
+                                        expansionContainer.className = "flex flex-col items-center gap-2";
+
+                                        // Connector person card (your existing connection)
+                                        if (conn.expansion_path) {
+                                            const connectorEmployee = {
+                                                name: conn.expansion_path.connector,
+                                                ldap: conn.expansion_path.connector_ldap,
+                                                designation: 'Your Connection',
+                                                company: 'Google',
+                                                organisation: 'Google',
+                                                avatar: null
+                                            };
+                                            const connectorCard = createEmployeeCard(connectorEmployee, false, 1);
+                                            connectorCard.classList.add("connector-card");
+                                            connectorCard.style.transform = "scale(0.85)";
+                                            connectorCard.style.opacity = "0.9";
+
+                                            // Add "CONNECTOR" badge
+                                            const connectorBadge = document.createElement("div");
+                                            connectorBadge.className = "absolute -top-2 -left-2 bg-purple-500 text-white text-xs px-2 py-1 rounded-full font-bold";
+                                            connectorBadge.innerHTML = "CONNECTOR";
+                                            connectorCard.style.position = "relative";
+                                            connectorCard.appendChild(connectorBadge);
+                                            expansionContainer.appendChild(connectorCard);
+
+                                            // Add relationship arrow
+                                            const relationshipArrow = document.createElement("div");
+                                            relationshipArrow.className = "text-purple-500 text-sm font-medium";
+                                            relationshipArrow.innerHTML = `${conn.expansion_path.relationship} ↓`;
+                                            expansionContainer.appendChild(relationshipArrow);
+                                        }
+
+                                        // Target employee card
+                                        const card = createEmployeeCard(targetEmployee, false, 2, 'network_expansion');
+                                        card.classList.add("expansion-target-card");
+                                        card.style.transform = "scale(0.8)";
+                                        card.style.border = "2px dashed #9333ea";
+
+                                        // Add expansion badge
+                                        const expansionBadge = document.createElement("div");
+                                        expansionBadge.className = "absolute -top-2 -right-2 bg-purple-600 text-white text-xs px-2 py-1 rounded-full font-bold";
+                                        expansionBadge.innerHTML = "NEW";
+                                        card.style.position = "relative";
+                                        card.appendChild(expansionBadge);
+
+                                        expansionContainer.appendChild(card);
+                                        expansionRow.appendChild(expansionContainer);
+                                    });
+
+                                    expansionSection.appendChild(expansionRow);
+                                    // allConnectionsRow.appendChild(expansionSection); // Now handled by unified display
+                                }
+
+                                // pathsContainer.appendChild(allConnectionsRow); // Now handled by unified display
+
+                                // Add separator before other connections
+                                // if (directConnections.length > 0 || indirectConnections.length > 0) {
+                                //     const separator = document.createElement("div");
+                                //     separator.className = "w-full h-px bg-gray-300 my-8";
+                                //     pathsContainer.appendChild(separator);
+
+                                //     const otherTitle = document.createElement("div");
+                                //     otherTitle.className = "text-center mb-4";
+                                //     otherTitle.innerHTML = '<h3 class="text-lg font-bold text-blue-700 mb-2">🔍 Discovered Connections</h3><p class="text-sm text-gray-600">Connections found through organizational hierarchy</p>';
+                                //     pathsContainer.appendChild(otherTitle);
+                                // }
+                            }
+
+                            if (directConnections.length > 0) {
+                                // Render Direct Connections (consolidated)
+                                // Connector from searched employee to direct QT connections
+                                const connector = document.createElement("div");
+                                connector.className = "h-3 w-1 bg-gray-300";
+                                pathsContainer.appendChild(connector);
+            
+                                const qtEmployeesRow = document.createElement("div");
+                                qtEmployeesRow.className = "flex justify-center items-center gap-4 flex-wrap";
+            
+                                directConnections.forEach(path => {
+                                    const qtEmployeeLdap = path[1]; // The second element is the directly connected QT employee
+                                    const qtEmployee = employeeMap.get(qtEmployeeLdap);
+                                    if (qtEmployee) {
+                                        // Find connection strength
+                                        const connection = connectionData.find(conn => 
+                                            conn['Google Employee LDAP'] === employee.ldap && conn['QT Employee LDAP'] === qtEmployeeLdap
+                                        );
+                                        const strength = connection ? connection['Connection Strength'] : null;
+                                        const card = createEmployeeCard(qtEmployee, false, 1, strength); // 1 hop for direct connection
+                                        qtEmployeesRow.appendChild(card);
+                                    }
+                                });
+                                pathsContainer.appendChild(qtEmployeesRow);
+                            } else if (indirectConnections.length > 0) {
+                                // Render Indirect Connections (grouped by intermediary)
+                                const indirectConnectionsByIntermediary = new Map();
+                                indirectConnections.forEach(path => {
+                                    const intermediaryLdap = path[path.length - 2]; // Second to last is the intermediary
+                                    if (!indirectConnectionsByIntermediary.has(intermediaryLdap)) {
+                                        indirectConnectionsByIntermediary.set(intermediaryLdap, []);
+                                    }
+                                    indirectConnectionsByIntermediary.get(intermediaryLdap).push(path); // Store the full path
+                                });
+            
+                                indirectConnectionsByIntermediary.forEach((pathsToQt, intermediaryLdap) => {
+                                    const intermediary = employeeMap.get(intermediaryLdap);
+                                    if (!intermediary) return; 
+            
+                                    // Connector from searched employee to intermediary
+                                    const connector = document.createElement("div");
+                                    connector.className = "h-3 w-1 bg-gray-300";
+                                    pathsContainer.appendChild(connector);
+            
+                                    const intermediarySection = document.createElement("div");
+                                    intermediarySection.className = "flex flex-col items-center gap-4";
+            
+                                    // Intermediary Card
+                                    const intermediaryCard = createEmployeeCard(intermediary, false, pathsToQt[0].length - 2); // Hops to intermediary
+                                    intermediarySection.appendChild(intermediaryCard);
+            
+                                    // Connector from intermediary to QT employees
+                                    const connectorToQt = document.createElement("div");
+                                    connectorToQt.className = "h-3 w-1 bg-gray-300";
+                                    intermediarySection.appendChild(connectorToQt);
+            
+                                    // Connected QT Employees (through this intermediary)
+                                    const qtEmployeesRow = document.createElement("div");
+                                    qtEmployeesRow.className = "flex justify-center items-center gap-4 flex-wrap";
+            
+                                    pathsToQt.forEach(path => {
+                                        const qtLdap = path[path.length - 1];
+                                        const qtEmployee = employeeMap.get(qtLdap);
+                                        if (qtEmployee) {
+                                            // Find connection strength
+                                            const connection = connectionData.find(conn => 
+                                                conn['Google Employee LDAP'] === intermediaryLdap && conn['QT Employee LDAP'] === qtLdap
+                                            );
+                                            const strength = connection ? connection['Connection Strength'] : null;
+                                            const card = createEmployeeCard(qtEmployee, false, path.length - 1, strength); // Total hops to QT employee
+                                            qtEmployeesRow.appendChild(card);
+                                        }
+                                    });
+                                    intermediarySection.appendChild(qtEmployeesRow);
+                                    pathsContainer.appendChild(intermediarySection);
+                                });
+                            }
+            
+                            // Populate unified connections display
+                            directConnections.forEach((conn) => {
+                                let qtEmployee = coreTeam.find(qt => qt.ldap === conn.qtLdap);
+                                if (!qtEmployee) {
+                                    qtEmployee = {
+                                        ldap: conn.qtLdap,
+                                        name: conn.qtLdap.replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                                        designation: 'QT Team Member',
+                                        company: 'QT',
+                                        organisation: 'QT',
+                                        avatar: null
+                                    };
+                                }
+
+                                const connectionContainer = document.createElement("div");
+                                connectionContainer.className = "flex flex-col items-center gap-2";
+
+                                const typeIndicator = document.createElement("div");
+                                typeIndicator.className = "text-xs text-green-600 font-medium px-2 py-1 bg-green-50 rounded-full";
+                                typeIndicator.innerHTML = "Direct";
+                                connectionContainer.appendChild(typeIndicator);
+
+                                const card = createEmployeeCard(qtEmployee, false, 1, conn.connectionStrength);
+                                card.classList.add("qt-connection-card");
+                                connectionContainer.appendChild(card);
+
+                                allQTConnectionsRow.appendChild(connectionContainer);
+                            });
+
+                            managerConnections.forEach((conn) => {
+                                let qtEmployee = coreTeam.find(qt => qt.ldap === conn.qtLdap);
+                                if (!qtEmployee) {
+                                    qtEmployee = {
+                                        ldap: conn.qtLdap,
+                                        name: conn.qtLdap.replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                                        designation: 'QT Team Member',
+                                        company: 'QT',
+                                        organisation: 'QT',
+                                        avatar: null
+                                    };
+                                }
+
+                                const connectionContainer = document.createElement("div");
+                                connectionContainer.className = "flex flex-col items-center gap-2";
+
+                                const managerInfo = document.createElement("div");
+                                managerInfo.className = "flex flex-col items-center gap-1";
+
+                                const initials = getInitials(conn.throughManager);
+                                const managerAvatarHtml = `<div class="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">${initials}</div>`;
+
+                                managerInfo.innerHTML = `
+                                    ${managerAvatarHtml}
+                                    <div class="text-xs text-gray-600 text-center">${conn.throughManager}</div>
+                                `;
+
+                                connectionContainer.appendChild(managerInfo);
+
+                                const card = createEmployeeCard(qtEmployee, false, 2, conn.connectionStrength);
+                                card.classList.add("qt-connection-card");
+                                connectionContainer.appendChild(card);
+
+                                allQTConnectionsRow.appendChild(connectionContainer);
+                            });
+
+                            transitiveConnections.forEach((conn) => {
+                                let qtEmployee = coreTeam.find(qt => qt.ldap === conn.qtLdap);
+                                if (!qtEmployee) {
+                                    qtEmployee = {
+                                        ldap: conn.qtLdap,
+                                        name: conn.qtLdap.replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                                        designation: 'QT Team Member',
+                                        company: 'QT',
+                                        organisation: 'QT',
+                                        avatar: null
+                                    };
+                                }
+
+                                const connectionContainer = document.createElement("div");
+                                connectionContainer.className = "flex flex-col items-center gap-2";
+
+                                const typeIndicator = document.createElement("div");
+                                typeIndicator.className = "text-xs text-blue-600 font-medium px-2 py-1 bg-blue-50 rounded-full";
+                                typeIndicator.innerHTML = "Transitive";
+                                connectionContainer.appendChild(typeIndicator);
+
+                                const card = createEmployeeCard(qtEmployee, false, conn.hops || 2, conn.connectionStrength);
+                                card.classList.add("qt-connection-card");
+                                connectionContainer.appendChild(card);
+
+                                allQTConnectionsRow.appendChild(connectionContainer);
+                            });
+
+                            networkExpansionConnections.forEach((conn) => {
+                                let qtEmployee = coreTeam.find(qt => qt.ldap === conn.qtLdap);
+                                if (!qtEmployee) {
+                                    qtEmployee = {
+                                        ldap: conn.qtLdap,
+                                        name: conn.qtLdap.replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                                        designation: 'QT Team Member',
+                                        company: 'QT',
+                                        organisation: 'QT',
+                                        avatar: null
+                                    };
+                                }
+
+                                const connectionContainer = document.createElement("div");
+                                connectionContainer.className = "flex flex-col items-center gap-2";
+
+                                const typeIndicator = document.createElement("div");
+                                typeIndicator.className = "text-xs text-purple-600 font-medium px-2 py-1 bg-purple-50 rounded-full";
+                                typeIndicator.innerHTML = "Network";
+                                connectionContainer.appendChild(typeIndicator);
+
+                                const card = createEmployeeCard(qtEmployee, false, 3, conn.connectionStrength);
+                                card.classList.add("qt-connection-card");
+                                connectionContainer.appendChild(card);
+
+                                allQTConnectionsRow.appendChild(connectionContainer);
+                            });
+
+                            // Append unified connections section instead of separate sections
+                            unifiedConnectionsSection.appendChild(allQTConnectionsRow);
+                            content.appendChild(unifiedConnectionsSection);
+                        } else {
+                            showNoConnectionsMessage(content, employee);
+                        }
+            
+                        return content;
+                    }
+            
+                    function showNoConnectionsMessage(content, employee) {
+                        console.log('No connections found, showing no connections message');
+                        content.innerHTML =
+                            '<div class="flex justify-center mb-16">' +
+                            createEmployeeCard(employee, true).outerHTML +
+                            '</div>' +
+                            '<div class="text-center">' +
+                            '<p class="text-gray-600 font-medium mb-8">No direct or indirect connections found</p>' +
+                            '<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">' +
+                            '<h3 class="font-semibold text-yellow-900 mb-2">No QT Connections</h3>' +
+                            '<p class="text-sm text-yellow-800">No declared connections found for ' + employee.name + ' or their manager. Consider exploring their network or declaring new connections.</p>' +
+                            '</div>' +
+                            '</div>';
+                    }
+            
+                    async function showSelectedEmployee() {
+                        if (!selectedEmployee) return;
+                        const mainContent = document.getElementById("mainContent");
+                        
+                        mainContent.innerHTML = '<div class="text-center py-16"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div><p class="mt-4 text-gray-500">Loading connection paths...</p></div>';
+            
+                        try {
+                            const pathContent = await renderConnectionPaths(selectedEmployee);
+                            mainContent.innerHTML = "";
+                            mainContent.appendChild(pathContent);
+                            lucide.createIcons();
+                        } catch (error) {
+                            console.error('Error showing selected employee:', error);
+                            mainContent.innerHTML = '<div class="text-center py-16"><p class="text-red-500">Error loading connection paths</p><p class="text-sm text-gray-500 mt-2">' + error.message + '</p></div>';
+                        }
+                    }
+            
+                    function setupSearch() {
+                        const searchInput = document.getElementById("searchInput");
+                        const suggestions = document.getElementById("suggestions");
+            
+                        searchInput.addEventListener("input", async (e) => {
+                            const searchTerm = e.target.value.trim();
+
+                            if (searchTerm.length === 0) {
+                                suggestions.classList.add("hidden");
+                                selectedEmployee = null;
+                                resetToOriginalState();
+                                return;
+                            }
+
+                            if (searchTerm.length < 2) {
+                                suggestions.innerHTML = "";
+                                suggestions.classList.add("hidden");
+                                return;
+                            }
+
+                            // Use the search API endpoint to get results with declared connections
+                            let filtered = [];
+                            try {
+                                const response = await fetch(`/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
+                                if (!response.ok) {
+                                    throw new Error('Search API failed');
+                                }
+                                filtered = await response.json();
+                                filtered = filtered.slice(0, 20);
+
+                                // Map API results to expected format
+                                filtered = filtered.map(emp => ({
+                                    ...emp,
+                                    avatar: emp.avatar || null,
+                                    declared_connections: emp.declared_connections || []
+                                }));
+                            } catch (error) {
+                                console.error('Search API error, falling back to client-side filter:', error);
+                                // Fallback to client-side filtering
+                                filtered = googleEmployees
+                                    .filter(emp =>
+                                        emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        emp.ldap.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        emp.designation.toLowerCase().includes(searchTerm.toLowerCase())
+                                    )
+                                    .slice(0, 20);
+                            }
+            
+                            suggestions.innerHTML = "";
+                            if (filtered.length > 0) {
+                                filtered.forEach((employee) => {
+                                    const item = document.createElement("button");
+                                    item.className = "suggestion-item";
+                                    
+                                    const avatarHtml = isValidImageUrl(employee.avatar)
+                                        ? '<img src="' + employee.avatar + '" alt="' + employee.name + '" class="w-10 h-10 rounded-full object-cover" onError="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm" style="display:none;">' + getInitials(employee.name) + '</div>'
+                                        : '<div class="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm">' + getInitials(employee.name) + '</div>';
+                                    
+                                    // Add connections info if available
+                                    const connectionCount = employee.declared_connections ? employee.declared_connections.length : 0;
+                                    const connectionsText = connectionCount > 0
+                                        ? `<div class="text-xs text-green-600 font-medium">${connectionCount} declared connection${connectionCount > 1 ? 's' : ''}</div>`
+                                        : '';
+
+                                    item.innerHTML = '<div class="flex items-center space-x-3 flex-1">' + avatarHtml + '<div class="flex-1 text-left"><div class="font-medium">' + employee.name + '</div><div class="text-sm text-gray-500">' + employee.designation + '</div><div class="text-xs text-gray-400">' + employee.ldap + '</div>' + connectionsText + '</div></div>';
+                                    
+                                    item.addEventListener("click", async () => {
+                                        searchInput.value = employee.name;
+                                        suggestions.classList.add("hidden");
+                                        selectedEmployee = employee;
+                                        await showSelectedEmployee();
+                                    });
+                                    suggestions.appendChild(item);
+                                });
+                                suggestions.classList.remove("hidden");
+                            } else {
+                                suggestions.classList.add("hidden");
+                            }
+                        });
+                        
+                        document.addEventListener("click", (e) => {
+                            if (!e.target.closest(".relative")) suggestions.classList.add("hidden");
+                        });
+                    }
+            
+                    function resetToOriginalState() {
+                        const mainContent = document.getElementById("mainContent");
+                        mainContent.innerHTML = '<div class="text-center text-gray-500 py-16"><p>Search and select a Google employee to find the shortest connection path from the QT team.</p></div>';
+                        selectedEmployee = null;
+                    }
+            
+                    async function init() {
+                        console.log('Initializing Qonnect...');
+                        await loadFlaskData();
+                        updateEmployeeMap();
+                        
+                        console.log('Data loaded:');
+                        console.log('- Google employees:', googleEmployees.length);
+                        console.log('- QT team:', coreTeam.length);
+                        console.log('- Connections:', connectionData.length);
+                        
+                        setupSearch();
+                        lucide.createIcons();
+                        console.log('Initialization complete!');
+                    }
+            
+                    document.addEventListener("DOMContentLoaded", init);
+                </script>
+            </body>
+            </html>

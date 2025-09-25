@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
       /* Copy exact styles from your working declare.html */
       .input {
@@ -60,75 +59,6 @@
       .hidden {
         display: none !important;
       }
-      .unified-card {
-        background-color: white;
-        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-        transition: all 0.3s ease-in-out;
-        display: flex;
-        flex-direction: column;
-        padding: 1rem;
-        border-radius: 0.75rem;
-        border: 2px solid #e5e7eb;
-      }
-      .unified-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 4px 8px -1px rgb(0 0 0 / 0.1);
-      }
-      .google-border {
-        border: 3px solid transparent;
-        border-image-slice: 1;
-        border-image-source: linear-gradient(90deg, #4285f4, #db4437, #f4b400, #0f9d58);
-      }
-      .qt-border {
-        border: 3px solid #5748c3;
-      }
-      .strength-btn {
-        font-weight: 500;
-        padding: 0.25rem 0.75rem;
-        font-size: 0.75rem;
-        transition: all 0.2s;
-        border: 1px solid #d1d5db;
-        border-radius: 0.375rem;
-        background-color: white;
-        cursor: pointer;
-      }
-      .strength-btn:hover {
-        background-color: #f9fafb;
-      }
-      .strength-btn.active-weak {
-        background-color: #fee2e2;
-        color: #991b1b;
-        border-color: #fca5a5;
-      }
-      .strength-btn.active-medium {
-        background-color: #fef3c7;
-        color: #92400e;
-        border-color: #fcd34d;
-      }
-      .strength-btn.active-strong {
-        background-color: #dcfce7;
-        color: #166534;
-        border-color: #86efac;
-      }
-      .bg-primary {
-        background-color: #2a2559;
-      }
-      .text-primary {
-        color: #2a2559;
-      }
-      @keyframes glow-weak {
-        from { box-shadow: 0 0 10px #fca5a5; }
-        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
-      }
-      @keyframes glow-medium {
-        from { box-shadow: 0 0 10px #fcd34d; }
-        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
-      }
-      @keyframes glow-strong {
-        from { box-shadow: 0 0 10px #86efac; }
-        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
-      }
-      /* REMOVED: Calendar icon and existing connection styling */
       .unified-card {
         background-color: white;
         box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -256,6 +186,11 @@
           Save Changes
         </button>
       </div>
+
+      <!-- Simple success message area -->
+      <div id="successMessage" class="hidden mt-6 mx-auto max-w-md p-4 bg-green-100 border border-green-300 rounded-lg text-center">
+        <p class="text-green-800 font-medium">Connection saved successfully!</p>
+      </div>
     </main>
 
     <script>
@@ -347,92 +282,87 @@
         }
       ];
 
-      // OPTIMIZED: Load existing connections using Google Employee Email for faster lookup
+      // Optimized: Load existing connections with better error handling
       async function loadExistingConnections(googleEmployee) {
         try {
-          console.log(`🔍 Loading existing connections for ${googleEmployee.name} (${googleEmployee.email})...`);
-          
+          console.log(`🔍 Loading existing connections for ${googleEmployee.name}...`);
+
           const response = await fetch('/api/connections-from-sheets');
           if (!response.ok) {
-            console.log('⚠️ Could not load connections from sheets');
+            console.warn('Connections API unavailable');
             return {};
           }
-          
-          const data = await response.json();
-          const connections = data.connections || [];
-          
-          console.log(`📊 Found ${connections.length} total connections in sheets`);
-          
-          // OPTIMIZED: Use email for matching (faster and more reliable)
-          const userConnections = {};
-          connections.forEach(conn => {
-            const googleEmailFromSheet = (conn['Google Employee Email'] || '').toLowerCase().trim();
-            const googleLdapFromSheet = (conn['Google Employee LDAP'] || '').toLowerCase().trim();
-            const qtLdapFromSheet = (conn['QT Employee LDAP'] || '').toLowerCase().trim();
-            const strength = (conn['Connection Strength'] || '').toLowerCase().trim();
-            const timestamp = conn['Timestamp'] || conn['Date & Time'] || '';
-            
-            // Match by email OR LDAP for better coverage
-            const emailMatch = googleEmailFromSheet === googleEmployee.email.toLowerCase();
-            const ldapMatch = googleLdapFromSheet === googleEmployee.ldap.toLowerCase();
-            
-            if (emailMatch || ldapMatch) {
-              // Map old LDAP to new LDAP if needed
-              let mappedQtLdap = qtLdapFromSheet;
-              
-              // Handle LDAP mapping for old vs new format
-              const ldapMapping = {
-                'lihi.segev': 'lihis',
-                'abhijeet.bagade': 'a.bagade', 
-                'omri.nissim': 'omrinis',
-                'lihis': 'lihis',
-                'a.bagade': 'a.bagade',
-                'omrinis': 'omrinis'
-              };
-              
-              if (ldapMapping[qtLdapFromSheet]) {
-                mappedQtLdap = ldapMapping[qtLdapFromSheet];
-              }
-              
-              userConnections[mappedQtLdap] = {
-                strength: strength,
-                timestamp: timestamp,
-                qtName: conn['QT Employee Name'] || conn['QT Team Member'] || qtLdapFromSheet,
-                originalQtLdap: qtLdapFromSheet
-              };
-              
-              console.log(`✅ Found connection: ${mappedQtLdap} (${qtLdapFromSheet}) -> ${strength}`);
-            }
-          });
-          
-          console.log(`📋 Loaded ${Object.keys(userConnections).length} existing connections for ${googleEmployee.name}`);
-          console.log('Connections:', userConnections);
+
+          const { connections = [] } = await response.json();
+          console.log(`📊 Processing ${connections.length} connections from sheets`);
+
+          const userConnections = processConnections(connections, googleEmployee);
+          console.log(`📋 Loaded ${Object.keys(userConnections).length} connections`);
+
           return userConnections;
-          
         } catch (error) {
-          console.log('⚠️ Error loading existing connections:', error);
+          console.error('Error loading connections:', error.message);
           return {};
         }
       }
 
-      // Load Google employees (same as your working code)
+      // Helper function to process and map connections
+      function processConnections(connections, googleEmployee) {
+        const userConnections = {};
+        const ldapMapping = {
+          'lihi.segev': 'lihis',
+          'abhijeet.bagade': 'a.bagade',
+          'omri.nissim': 'omrinis'
+        };
+
+        connections.forEach(conn => {
+          const googleEmail = (conn['Google Employee Email'] || '').toLowerCase().trim();
+          const googleLdap = (conn['Google Employee LDAP'] || '').toLowerCase().trim();
+          const qtLdap = (conn['QT Employee LDAP'] || '').toLowerCase().trim();
+
+          // Check if this connection belongs to the current employee
+          const emailMatch = googleEmail === googleEmployee.email.toLowerCase();
+          const ldapMatch = googleLdap === googleEmployee.ldap.toLowerCase();
+
+          if (emailMatch || ldapMatch) {
+            const mappedQtLdap = ldapMapping[qtLdap] || qtLdap;
+
+            userConnections[mappedQtLdap] = {
+              strength: (conn['Connection Strength'] || '').toLowerCase().trim(),
+              timestamp: conn['Timestamp'] || conn['Date & Time'] || '',
+              qtName: conn['QT Employee Name'] || conn['QT Team Member'] || qtLdap,
+              originalQtLdap: qtLdap
+            };
+          }
+        });
+
+        return userConnections;
+      }
+
+      // Fetch Google employees with fallback data
       async function fetchGoogleEmployees() {
         try {
           const response = await fetch('/api/google-employees');
           if (response.ok) {
             const apiData = await response.json();
-            if (apiData && apiData.length > 0) {
+            if (apiData?.length) {
               googleEmployees = apiData;
-              console.log('Loaded Google employees from API:', googleEmployees.length);
+              console.log(`✅ Loaded ${googleEmployees.length} employees from API`);
               return;
             }
           }
         } catch (error) {
-          console.log('API not available, using hardcoded data');
+          console.warn('API unavailable, using fallback data');
         }
-        
-        // Fallback data with more examples for testing LDAP search
-        googleEmployees = [
+
+        // Fallback data for development/testing
+        googleEmployees = getFallbackEmployees();
+        console.log(`📋 Using ${googleEmployees.length} fallback employees`);
+      }
+
+      // Get fallback employee data
+      function getFallbackEmployees() {
+        return [
           {
             ldap: 'ashwink',
             name: 'Ashwin Kumar',
@@ -440,8 +370,7 @@
             department: 'Engineering',
             designation: 'Senior Engineering Manager',
             company: 'GOOGLE',
-            organisation: 'Google',
-            connections: []
+            organisation: 'Google'
           },
           {
             ldap: 'epersitz',
@@ -450,8 +379,7 @@
             department: 'SLS',
             designation: 'Sr. Program Manager, SLS',
             company: 'GOOGLE',
-            organisation: 'Google',
-            connections: []
+            organisation: 'Google'
           },
           {
             ldap: 'john.smith',
@@ -460,8 +388,7 @@
             department: 'Engineering',
             designation: 'Software Engineer',
             company: 'GOOGLE',
-            organisation: 'Google',
-            connections: []
+            organisation: 'Google'
           },
           {
             ldap: 'dgavish',
@@ -470,50 +397,47 @@
             department: 'Engineering',
             designation: 'Software Engineer',
             company: 'GOOGLE',
-            organisation: 'Google',
-            connections: []
+            organisation: 'Google'
           }
         ];
-        console.log('Using hardcoded Google employees');
       }
 
+      // Search Google employees with API fallback
       async function searchGoogleEmployees(query) {
         try {
           const response = await fetch(`/api/search-google-employees?q=${encodeURIComponent(query)}`);
           if (response.ok) {
             const results = await response.json();
-            if (results && results.length > 0) {
-              console.log(`✅ API search found ${results.length} results for "${query}"`);
+            if (results?.length) {
+              console.log(`✅ API search: ${results.length} results for "${query}"`);
               return results;
             }
           }
         } catch (error) {
-          console.log('Search API not available, using local search');
+          console.warn('Search API unavailable, using local search');
         }
-        
-        // ENHANCED: Local search with LDAP support
-        const query_lower = query.toLowerCase().trim();
-        console.log(`🔍 Local search for: "${query_lower}"`);
-        
+
+        // Local search with comprehensive matching
+        return performLocalSearch(query);
+      }
+
+      // Perform local employee search
+      function performLocalSearch(query) {
+        const queryLower = query.toLowerCase().trim();
+        console.log(`🔍 Local search for: "${queryLower}"`);
+
         const results = googleEmployees.filter(emp => {
-          const nameMatch = emp.name.toLowerCase().includes(query_lower);
-          const emailMatch = emp.email && emp.email.toLowerCase().includes(query_lower);
-          const ldapMatch = emp.ldap && emp.ldap.toLowerCase().includes(query_lower);
-          const designationMatch = emp.designation && emp.designation.toLowerCase().includes(query_lower);
-          
-          // Log matching details for debugging
-          if (nameMatch || emailMatch || ldapMatch || designationMatch) {
-            console.log(`✅ Match found: ${emp.name} (${emp.ldap})`);
-            console.log(`  - Name: ${nameMatch ? '✅' : '❌'} "${emp.name}"`);
-            console.log(`  - Email: ${emailMatch ? '✅' : '❌'} "${emp.email || 'N/A'}"`);
-            console.log(`  - LDAP: ${ldapMatch ? '✅' : '❌'} "${emp.ldap}"`);
-            console.log(`  - Title: ${designationMatch ? '✅' : '❌'} "${emp.designation || 'N/A'}"`);
-          }
-          
-          return nameMatch || emailMatch || ldapMatch || designationMatch;
+          const fields = [
+            emp.name?.toLowerCase(),
+            emp.email?.toLowerCase(),
+            emp.ldap?.toLowerCase(),
+            emp.designation?.toLowerCase()
+          ];
+
+          return fields.some(field => field?.includes(queryLower));
         });
-        
-        console.log(`📊 Local search found ${results.length} results`);
+
+        console.log(`📊 Local search: ${results.length} results found`);
         return results;
       }
 
@@ -568,197 +492,259 @@
         return card;
       }
 
-      // OPTIMIZED: Render connection interface with faster existing connections loading
+      // Render connection interface for selected employee
       async function renderConnectionInterface(googleEmployee) {
+        initializeRenderState(googleEmployee);
+        showLoadingState();
+
+        existingConnections = await loadExistingConnections(googleEmployee);
+        renderInterface();
+      }
+
+      // Initialize render state
+      function initializeRenderState(googleEmployee) {
         selectedGoogleEmployee = googleEmployee;
         pendingChanges = {};
+        console.log(`🎯 Loading interface for ${googleEmployee.name}`);
+      }
 
-        console.log(`🎯 Loading connections for ${googleEmployee.name} (${googleEmployee.ldap})`);
-        
-        // Optimized loading state
+      // Show loading state
+      function showLoadingState() {
         const mainContent = document.getElementById("mainContent");
         mainContent.innerHTML = `
           <div class="text-center py-8">
             <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
             <p class="mt-2 text-gray-500 text-sm">Loading connections...</p>
           </div>`;
+      }
 
-        // OPTIMIZED: Pass the full employee object for email-based lookup
-        existingConnections = await loadExistingConnections(googleEmployee);
-        
-        // Clear loading and render interface
+      // Render the main interface
+      function renderInterface() {
+        const mainContent = document.getElementById("mainContent");
         mainContent.innerHTML = "";
 
-        // Selected Google Employee Card
-        const selectedEmployeeContainer = document.createElement("div");
-        selectedEmployeeContainer.className = "mb-10 flex justify-center";
-        const googleCard = createEmployeeCard(googleEmployee, true);
-        googleCard.classList.add("w-full", "max-w-xs", "mx-auto");
-        selectedEmployeeContainer.appendChild(googleCard);
+        mainContent.appendChild(createSelectedEmployeeSection());
+        mainContent.appendChild(createQTTeamSection());
+        setupQTTeamInteractions();
 
-        // QT Team Section with cleaner existing connections display
+        console.log(`📊 Interface rendered: ${Object.keys(existingConnections).length} connections`);
+      }
+
+      // Create selected employee section
+      function createSelectedEmployeeSection() {
+        const container = document.createElement("div");
+        container.className = "mb-10 flex justify-center";
+
+        const googleCard = createEmployeeCard(selectedGoogleEmployee, true);
+        googleCard.classList.add("w-full", "max-w-xs", "mx-auto");
+        container.appendChild(googleCard);
+
+        return container;
+      }
+
+      // Create QT team section
+      function createQTTeamSection() {
         const existingCount = Object.keys(existingConnections).length;
-        const qtSection = document.createElement("div");
-        qtSection.innerHTML = `
+        const section = document.createElement("div");
+
+        section.innerHTML = `
           <h3 class="text-lg font-semibold text-gray-800 mb-2 text-center">Manage Connections with QT Team</h3>
           <p class="text-sm text-gray-600 mb-4 text-center">
             ${existingCount > 0 ? `${existingCount} existing connections found` : 'No existing connections found'}
           </p>
           <div id="qtTeamContainer" class="space-y-4"></div>`;
 
-        mainContent.appendChild(selectedEmployeeContainer);
-        mainContent.appendChild(qtSection);
-
-        const qtContainer = document.getElementById("qtTeamContainer");
-        
-        // Use hardcoded QT team
-        coreTeam = qtTeamData;
-        
-        if (coreTeam.length === 0) {
-          qtContainer.innerHTML = `
-            <div class="text-center text-gray-500 py-8">
-              <p>No QT team members found.</p>
-            </div>`;
-        } else {
-          qtContainer.innerHTML = `
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 justify-items-center">
-              ${coreTeam.map(qtMember => `
-                <div class="qt-member-card w-full max-w-xs">
-                  <!-- Card content will be inserted here -->
-                </div>
-              `).join('')}
-            </div>`;
-
-          // Add individual cards
-          const qtCards = qtContainer.querySelectorAll('.qt-member-card');
-          coreTeam.forEach((qtMember, index) => {
-            if (qtCards[index]) {
-              const card = createEmployeeCard(qtMember, false);
-              qtCards[index].appendChild(card);
-            }
-          });
-
-          // Add event listeners for strength buttons
-          qtContainer.querySelectorAll(".strength-btn").forEach((btn) => {
-            btn.addEventListener("click", (e) => {
-              const qtLdap = e.currentTarget.dataset.ldap;
-              const strength = e.currentTarget.dataset.strength;
-              const card = e.currentTarget.closest(".unified-card");
-
-              pendingChanges[qtLdap] = strength;
-
-              // Update button states
-              e.currentTarget.parentElement.querySelectorAll(".strength-btn").forEach((b) => {
-                b.classList.remove("active-weak", "active-medium", "active-strong");
-              });
-              e.currentTarget.classList.add(`active-${strength}`);
-
-              // Show save button
-              const saveBtn = document.getElementById("saveChangesBtn");
-              if (saveBtn) {
-                saveBtn.classList.remove("hidden");
-                saveBtn.style.display = "flex";
-              }
-
-              // Add glow effect
-              card.classList.remove("glow-weak", "glow-medium", "glow-strong");
-              void card.offsetWidth;
-              card.classList.add(`glow-${strength}`);
-            });
-          });
-        }
-        
-        // Log final state for debugging
-        console.log('📊 Final existing connections loaded:', existingConnections);
-        console.log('🎯 QT team members rendered:', coreTeam.length);
+        populateQTTeamContainer(section.querySelector('#qtTeamContainer'));
+        return section;
       }
 
+      // Populate QT team container
+      function populateQTTeamContainer(container) {
+        coreTeam = qtTeamData;
+
+        if (coreTeam.length === 0) {
+          container.innerHTML = '<div class="text-center text-gray-500 py-8"><p>No QT team members found.</p></div>';
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 justify-items-center">
+            ${coreTeam.map(() => '<div class="qt-member-card w-full max-w-xs"></div>').join('')}
+          </div>`;
+
+        // Add individual cards
+        const qtCards = container.querySelectorAll('.qt-member-card');
+        coreTeam.forEach((qtMember, index) => {
+          if (qtCards[index]) {
+            qtCards[index].appendChild(createEmployeeCard(qtMember, false));
+          }
+        });
+      }
+
+      // Setup QT team button interactions
+      function setupQTTeamInteractions() {
+        const qtContainer = document.getElementById("qtTeamContainer");
+        if (!qtContainer) return;
+
+        qtContainer.addEventListener('click', (e) => {
+          if (!e.target.classList.contains('strength-btn')) return;
+
+          const qtLdap = e.target.dataset.ldap;
+          const strength = e.target.dataset.strength;
+          const card = e.target.closest(".unified-card");
+
+          updateConnectionStrength(qtLdap, strength, e.target, card);
+        });
+      }
+
+      // Update connection strength
+      function updateConnectionStrength(qtLdap, strength, button, card) {
+        pendingChanges[qtLdap] = strength;
+
+        // Update button states
+        const strengthButtons = button.parentElement.querySelectorAll(".strength-btn");
+        strengthButtons.forEach(btn => btn.classList.remove("active-weak", "active-medium", "active-strong"));
+        button.classList.add(`active-${strength}`);
+
+        // Show save button
+        const saveBtn = document.getElementById("saveChangesBtn");
+        if (saveBtn) {
+          saveBtn.classList.remove("hidden");
+          saveBtn.style.display = "flex";
+        }
+
+        // Add visual feedback
+        card.classList.remove("glow-weak", "glow-medium", "glow-strong");
+        void card.offsetWidth; // Force reflow
+        card.classList.add(`glow-${strength}`);
+      }
+
+      // Setup search functionality
       function setupSearch() {
         const searchInput = document.getElementById("searchInput");
         const suggestions = document.getElementById("suggestions");
         const suggestionsList = document.getElementById("suggestionsList");
 
         searchInput.addEventListener("input", async (e) => {
-          const searchTerm = e.target.value.trim();
-          
-          if (searchTerm.length === 0) {
-            suggestions.classList.add("hidden");
-            suggestionsList.innerHTML = "";
-            
-            // Reset to initial state
-            selectedGoogleEmployee = null;
-            pendingChanges = {};
-            existingConnections = {};
-            
-            const mainContent = document.getElementById("mainContent");
-            mainContent.innerHTML = `
-              <div class="text-center text-gray-500 py-16">
-                <p>Search for a Google employee to begin.</p>
-              </div>`;
-            
-            const saveBtn = document.getElementById("saveChangesBtn");
-            if (saveBtn) {
-              saveBtn.classList.add("hidden");
-            }
-            
-            return;
-          }
-          
-          if (searchTerm.length < 2) {
-            suggestions.classList.add("hidden");
-            return;
-          }
-
-          const filteredEmployees = await searchGoogleEmployees(searchTerm);
-
-          suggestionsList.innerHTML = "";
-          if (filteredEmployees.length > 0) {
-            console.log(`📋 Showing ${filteredEmployees.length} search suggestions`);
-            filteredEmployees.forEach((employee) => {
-              const item = document.createElement("button");
-              item.className = "suggestion-item";
-              
-              // Enhanced display showing which field matched
-              let matchIndicator = "";
-              const queryLower = searchTerm.toLowerCase();
-              if (employee.ldap && employee.ldap.toLowerCase().includes(queryLower)) {
-                matchIndicator = `<span class="text-xs text-blue-600">LDAP match</span>`;
-              } else if (employee.email && employee.email.toLowerCase().includes(queryLower)) {
-                matchIndicator = `<span class="text-xs text-green-600">Email match</span>`;
-              } else if (employee.name.toLowerCase().includes(queryLower)) {
-                matchIndicator = `<span class="text-xs text-purple-600">Name match</span>`;
-              }
-              
-              item.innerHTML = `
-                <div class="w-10 h-10 rounded-full border-2 border-gray-300 bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
-                  <span class="text-sm font-bold text-gray-600">${employee.name.split(' ').map(n => n[0]).join('').substring(0, 2)}</span>
-                </div>
-                <div class="flex-1 min-w-0 text-left">
-                  <div class="font-medium truncate">${employee.name}</div>
-                  <div class="text-sm text-gray-500">${employee.designation}</div>
-                  <div class="text-sm text-gray-500 truncate font-mono">${employee.ldap}</div>
-                  ${matchIndicator}
-                </div>`;
-              item.addEventListener("click", () => {
-                console.log(`🎯 Selected: ${employee.name} (${employee.ldap})`);
-                searchInput.value = employee.name;
-                suggestions.classList.add("hidden");
-                renderConnectionInterface(employee);
-              });
-              suggestionsList.appendChild(item);
-            });
-            suggestions.classList.remove("hidden");
-          } else {
-            console.log(`❌ No search results found for "${searchTerm}"`);
-            suggestions.classList.add("hidden");
-          }
+          await handleSearchInput(e, suggestions, suggestionsList);
         });
 
+        // Close suggestions when clicking outside
         document.addEventListener("click", (e) => {
           if (!e.target.closest(".relative")) {
             suggestions.classList.add("hidden");
           }
         });
+      }
+
+      // Handle search input events
+      async function handleSearchInput(event, suggestions, suggestionsList) {
+        const searchTerm = event.target.value.trim();
+
+        if (searchTerm.length === 0) {
+          resetSearchState(suggestions, suggestionsList);
+          return;
+        }
+
+        if (searchTerm.length < 2) {
+          suggestions.classList.add("hidden");
+          return;
+        }
+
+        await performSearch(searchTerm, suggestions, suggestionsList);
+      }
+
+      // Reset search to initial state
+      function resetSearchState(suggestions, suggestionsList) {
+        suggestions.classList.add("hidden");
+        suggestionsList.innerHTML = "";
+
+        selectedGoogleEmployee = null;
+        pendingChanges = {};
+        existingConnections = {};
+
+        const mainContent = document.getElementById("mainContent");
+        mainContent.innerHTML = '<div class="text-center text-gray-500 py-16"><p>Search for a Google employee to begin.</p></div>';
+
+        const saveBtn = document.getElementById("saveChangesBtn");
+        saveBtn?.classList.add("hidden");
+      }
+
+      // Perform search and display results
+      async function performSearch(searchTerm, suggestions, suggestionsList) {
+        const filteredEmployees = await searchGoogleEmployees(searchTerm);
+
+        suggestionsList.innerHTML = "";
+
+        if (filteredEmployees.length > 0) {
+          console.log(`📋 Showing ${filteredEmployees.length} suggestions`);
+
+          filteredEmployees.forEach(employee => {
+            const item = createSuggestionItem(employee, searchTerm);
+            suggestionsList.appendChild(item);
+          });
+
+          suggestions.classList.remove("hidden");
+        } else {
+          console.log(`❌ No results for "${searchTerm}"`);
+          suggestions.classList.add("hidden");
+        }
+      }
+
+      // Create suggestion item
+      function createSuggestionItem(employee, searchTerm) {
+        const item = document.createElement("button");
+        item.className = "suggestion-item";
+
+        const matchIndicator = getMatchIndicator(employee, searchTerm);
+        const initials = employee.name.split(' ').map(n => n[0]).join('').substring(0, 2);
+
+        item.innerHTML = `
+          <div class="w-10 h-10 rounded-full border-2 border-gray-300 bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+            <span class="text-sm font-bold text-gray-600">${initials}</span>
+          </div>
+          <div class="flex-1 min-w-0 text-left">
+            <div class="font-medium truncate">${employee.name}</div>
+            <div class="text-sm text-gray-500">${employee.designation}</div>
+            <div class="text-sm text-gray-500 truncate font-mono">${employee.ldap}</div>
+            ${matchIndicator}
+          </div>`;
+
+        item.addEventListener("click", () => {
+          selectEmployee(employee);
+        });
+
+        return item;
+      }
+
+      // Get match indicator for search result
+      function getMatchIndicator(employee, searchTerm) {
+        const queryLower = searchTerm.toLowerCase();
+
+        if (employee.ldap?.toLowerCase().includes(queryLower)) {
+          return '<span class="text-xs text-blue-600">LDAP match</span>';
+        }
+        if (employee.email?.toLowerCase().includes(queryLower)) {
+          return '<span class="text-xs text-green-600">Email match</span>';
+        }
+        if (employee.name?.toLowerCase().includes(queryLower)) {
+          return '<span class="text-xs text-purple-600">Name match</span>';
+        }
+
+        return '';
+      }
+
+      // Select employee from search results
+      function selectEmployee(employee) {
+        console.log(`🎯 Selected: ${employee.name} (${employee.ldap})`);
+
+        const searchInput = document.getElementById("searchInput");
+        const suggestions = document.getElementById("suggestions");
+
+        searchInput.value = employee.name;
+        suggestions.classList.add("hidden");
+
+        renderConnectionInterface(employee);
       }
 
       function setupSaveButton() {
@@ -770,7 +756,19 @@
           
           const changesCount = Object.keys(pendingChanges).length;
           if (changesCount === 0) {
-            Swal.fire('No Changes', 'No changes to save!', 'warning');
+            // Show simple warning message
+            const successMessage = document.getElementById('successMessage');
+            const messageText = successMessage.querySelector('p');
+
+            messageText.textContent = 'No changes to save!';
+            successMessage.className = 'mt-6 mx-auto max-w-md p-4 bg-yellow-100 border border-yellow-300 rounded-lg text-center';
+            successMessage.classList.remove('hidden');
+
+            // Hide after 3 seconds
+            setTimeout(() => {
+              successMessage.classList.add('hidden');
+              successMessage.className = 'hidden mt-6 mx-auto max-w-md p-4 bg-green-100 border border-green-300 rounded-lg text-center';
+            }, 3000);
             return;
           }
 
@@ -799,34 +797,21 @@
             console.log('Save result:', result);
 
             if (response.ok && result.success) {
-              const message = result.written_to_sheets 
+              // Show simple success message
+              const successMessage = document.getElementById('successMessage');
+              const messageText = successMessage.querySelector('p');
+
+              const message = result.written_to_sheets
                 ? `Successfully saved ${result.updated_count} connection(s) to Google Sheets!`
-                : `Saved ${result.updated_count} connection(s) locally. Google Sheets: ${result.sheets_error || 'unavailable'}`;
-              
-              await Swal.fire({
-                title: 'Success!',
-                html: `
-                  <div class="text-left">
-                    <p class="mb-3">${message}</p>
-                    <div class="bg-gray-50 p-3 rounded-lg text-sm">
-                      <strong>Saved connections for:</strong> ${selectedGoogleEmployee.name}<br>
-                      <strong>Total connections:</strong> ${result.updated_count}<br>
-                      ${result.written_to_sheets ? 
-                        '<strong>✅ Written to Google Sheets "Connections" tab</strong>' : 
-                        '<strong>⚠️ Google Sheets unavailable - saved locally</strong>'
-                      }
-                    </div>
-                  </div>
-                `,
-                icon: result.written_to_sheets ? 'success' : 'warning',
-                confirmButtonText: result.written_to_sheets ? 'View Google Sheet' : 'OK',
-                showCancelButton: result.written_to_sheets,
-                cancelButtonText: 'Continue'
-              }).then((swalResult) => {
-                if (swalResult.isConfirmed && result.written_to_sheets && result.sheets_url) {
-                  window.open(result.sheets_url, '_blank');
-                }
-              });
+                : `Saved ${result.updated_count} connection(s) locally.`;
+
+              messageText.textContent = message;
+              successMessage.classList.remove('hidden');
+
+              // Hide the success message after 5 seconds
+              setTimeout(() => {
+                successMessage.classList.add('hidden');
+              }, 5000);
               
               // Clear pending changes and refresh the interface to show updated connections
               pendingChanges = {};
@@ -843,12 +828,20 @@
             
           } catch (error) {
             console.error('Save error:', error);
-            await Swal.fire({
-              title: 'Save Error',
-              text: `Failed to save connections: ${error.message}`,
-              icon: 'error',
-              confirmButtonText: 'Try Again'
-            });
+
+            // Show simple error message
+            const successMessage = document.getElementById('successMessage');
+            const messageText = successMessage.querySelector('p');
+
+            messageText.textContent = `Failed to save connections: ${error.message}`;
+            successMessage.className = 'mt-6 mx-auto max-w-md p-4 bg-red-100 border border-red-300 rounded-lg text-center';
+            successMessage.classList.remove('hidden');
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+              successMessage.classList.add('hidden');
+              successMessage.className = 'hidden mt-6 mx-auto max-w-md p-4 bg-green-100 border border-green-300 rounded-lg text-center';
+            }, 5000);
           } finally {
             // Reset button state
             saveBtn.disabled = false;
