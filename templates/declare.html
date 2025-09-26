@@ -11,22 +11,6 @@
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     <style>
       /* Copy exact styles from your working declare.html */
-      .input {
-        display: flex;
-        height: 2.25rem;
-        width: 100%;
-        border: 1px solid #d1d5db;
-        background-color: #ffffff;
-        padding: 0.5rem 0.75rem;
-        font-size: 0.875rem;
-        border-radius: 0.375rem;
-        transition: all 0.2s;
-      }
-      .input:focus {
-        outline: 2px solid #4f46e5;
-        outline-offset: 2px;
-        border-color: #4f46e5;
-      }
       .suggestions {
         position: absolute;
         top: 100%;
@@ -74,12 +58,12 @@
         box-shadow: 0 4px 8px -1px rgb(0 0 0 / 0.1);
       }
       .google-border {
-        border: 3px solid transparent;
-        border-image-slice: 1;
-        border-image-source: linear-gradient(90deg, #4285f4, #db4437, #f4b400, #0f9d58);
+        border: 1px solid transparent;
+        background: linear-gradient(white, white) padding-box,
+                    linear-gradient(45deg, #4285f4, #ea4335, #fbbc05, #34a853) border-box;
       }
       .qt-border {
-        border: 3px solid #5748c3;
+        border: 2px solid #5748c3;
       }
       .strength-btn {
         font-weight: 500;
@@ -160,10 +144,11 @@
       </div>
 
       <div class="flex justify-center my-8">
-        <div class="relative w-full max-w-lg">
+        <div class="relative w-full max-w-md">
           <div class="relative">
-            <i data-lucide="search" class="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5"></i>
-            <input type="text" id="searchInput" placeholder="Search by name, LDAP, or email (e.g., ashwink, epersitz, john.smith)..." class="input pl-12" />
+            <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"></i>
+            <input type="text" id="searchInput" placeholder="Search Google Employees"
+                   class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
           </div>
           <div id="suggestions" class="suggestions hidden">
             <div id="suggestionsList"></div>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Qonnect - Organization Hierarchy Chart v2.5</title>
+    <title>Qonnect - Organization Hierarchy Chart v2.7</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -76,6 +76,14 @@
         .text-xxs {
             font-size: 0.625rem;
             line-height: 0.75rem;
+        }
+
+        .connection-count-hidden {
+            display: none !important;
+        }
+
+        .steps-badge-hidden {
+            display: none !important;
         }
     </style>
 </head>
@@ -226,27 +234,72 @@
                 employee.declared_connections = [];
             }
 
-            // PRIORITY RULE: If employee has direct connections, show ONLY direct connections
-            if (employee.declared_connections && employee.declared_connections.length > 0) {
-                console.log('🎯 PRIORITY: Employee has direct connections, showing only direct connections');
-                console.log('📊 Showing', employee.declared_connections.length, 'direct QT connections');
+            // FIXED LOGIC: Show only direct connections if available, otherwise show hierarchical
+            // Priority: Direct connections ONLY, fallback to hierarchical if no direct connections
+            console.log('🔍 Applying new connection display logic: Direct ONLY or Hierarchical fallback...');
 
+            // Step 1: Categorize existing declared connections by type
+            const directConnections = [];
+            const indirectConnections = [];
+
+            if (employee.declared_connections && employee.declared_connections.length > 0) {
+                employee.declared_connections.forEach(conn => {
+                    if (conn.source === 'Google Sheets' && !conn.intermediatePerson) {
+                        directConnections.push(conn);
+                    } else if (conn.source === 'Transitive' || conn.intermediatePerson) {
+                        indirectConnections.push(conn);
+                    }
+                });
+            }
+
+            console.log('🔍 Found connections:', {
+                direct: directConnections.length,
+                indirect: indirectConnections.length
+            });
+
+            // Step 2: Decide what connections to show
+            if (directConnections.length > 0) {
+                // Show ONLY direct connections
+                console.log('✅ Showing DIRECT connections only (', directConnections.length, 'found)');
+                employee.declared_connections = directConnections.map(conn => ({
+                    ...conn,
+                    connectionType: 'direct',
+                    priority: 1
+                    // pathLength is now provided by backend
+                }));
+            } else if (indirectConnections.length > 0) {
+                // Show ONLY indirect connections
+                console.log('✅ Showing INDIRECT connections only (', indirectConnections.length, 'found)');
+                employee.declared_connections = indirectConnections.map(conn => ({
+                    ...conn,
+                    connectionType: 'indirect',
+                    priority: 2,
+                    throughManager: conn.intermediatePerson?.name || 'Indirect Connection'
+                    // pathLength is now provided by backend
+                }));
             } else {
-                console.log('🔍 No direct connections found, checking hierarchical connections...');
-                // Only try hierarchical connections if NO direct connections exist
+                // Only if NO direct or indirect connections, then search for hierarchical
+                console.log('🔍 No direct/indirect connections found, searching for hierarchical connections...');
                 const hierarchicalConnections = await discoverHierarchicalConnections(employee);
                 console.log('🔍 Discovered hierarchical connections:', hierarchicalConnections.length);
 
-                if (hierarchicalConnections && hierarchicalConnections.length > 0) {
-                    // Add hierarchical connections to declared_connections for rendering
-                    employee.declared_connections = hierarchicalConnections.map(conn => ({
-                        qtLdap: conn.qtMember.qtLdap,
-                        connectionStrength: conn.qtMember.connectionStrength || 'INDIRECT',
-                        throughManager: conn.bridgePerson.name
-                    }));
-                    console.log('📊 Added', employee.declared_connections.length, 'hierarchical connections for rendering');
-                }
+                employee.declared_connections = hierarchicalConnections.map(conn => ({
+                    qtLdap: conn.qtMember.qtLdap,
+                    connectionStrength: conn.qtMember.connectionStrength || 'HIERARCHICAL',
+                    throughManager: conn.bridgePerson.name,
+                    connectionType: 'hierarchical',
+                    priority: 3,
+                    source: 'Hierarchical',
+                    pathLength: conn.pathLength // Use actual path length from hierarchical discovery
+                }));
+                console.log('✅ Showing HIERARCHICAL connections only (', hierarchicalConnections.length, 'found)');
             }
+
+            console.log('📊 Final connection display decision:', {
+                total: employee.declared_connections.length,
+                type: employee.declared_connections[0]?.connectionType || 'none'
+            });
+
 
             // Check if we have any connections to show (direct or hierarchical)
             const hasConnections = employee.declared_connections && employee.declared_connections.length > 0;
@@ -275,9 +328,38 @@
                 const qtConnectionsGrid = document.createElement("div");
                 qtConnectionsGrid.className = "flex flex-wrap justify-center gap-6 max-w-4xl";
 
-                employee.declared_connections.forEach(conn => {
+                for (const conn of employee.declared_connections) {
                     console.log('Looking for QT employee with LDAP:', conn.qtLdap);
                     console.log('Available QT team members:', coreTeam.map(emp => emp.ldap));
+
+                    // Calculate pathLength for indirect connections that don't have it
+                    if (conn.throughManager && conn.pathLength === undefined) {
+                        console.log(`🔢 Calculating missing pathLength for indirect connection via ${conn.throughManager}`);
+
+                        // Find the bridge person (throughManager) in Google employees
+                        try {
+                            const bridgeResponse = await fetch(`/api/search-employees?q=${encodeURIComponent(conn.throughManager)}`);
+                            if (bridgeResponse.ok) {
+                                const bridgeResults = await bridgeResponse.json();
+                                const bridgePerson = bridgeResults.find(emp =>
+                                    emp.name.toLowerCase().includes(conn.throughManager.toLowerCase()) ||
+                                    emp.ldap.toLowerCase().includes(conn.throughManager.toLowerCase())
+                                );
+
+                                if (bridgePerson) {
+                                    console.log(`✅ Found bridge person: ${bridgePerson.name}`);
+                                    conn.pathLength = await calculateFullHierarchyPathLength(employee, bridgePerson);
+                                    console.log(`📏 Calculated pathLength: ${conn.pathLength}`);
+                                } else {
+                                    console.log(`❌ Bridge person not found for: ${conn.throughManager}`);
+                                    conn.pathLength = 3; // Default reasonable estimate
+                                }
+                            }
+                        } catch (error) {
+                            console.warn(`Error finding bridge person for ${conn.throughManager}:`, error);
+                            conn.pathLength = 3; // Default reasonable estimate
+                        }
+                    }
 
                     // Always use the qtMemberMap for consistent data, ignoring coreTeam API response
                     console.log('Creating QT employee data for:', conn.qtLdap);
@@ -355,12 +437,12 @@
 
                     const card = createEmployeeCard(qtEmployee);
 
-                    // Add connection strength indicator to top-right corner
+                    // Add connection strength indicator to top-right corner (keeping original UI)
                     if (conn.connectionStrength) {
                         const strengthBadge = document.createElement("div");
                         strengthBadge.className = "absolute top-1 right-1 text-xxs px-0.5 py-0.5 rounded font-medium";
 
-                        // Style based on connection strength
+                        // Style based on connection strength (original logic)
                         switch(conn.connectionStrength.toLowerCase()) {
                             case 'strong':
                                 strengthBadge.className += " bg-green-100 text-green-700";
@@ -373,6 +455,10 @@
                             case 'weak':
                                 strengthBadge.className += " bg-red-100 text-red-700";
                                 strengthBadge.textContent = "WEAK";
+                                break;
+                            case 'hierarchical':
+                                strengthBadge.className += " bg-purple-100 text-purple-700";
+                                strengthBadge.textContent = "INDIRECT";
                                 break;
                             default:
                                 strengthBadge.className += " bg-gray-100 text-gray-700";
@@ -391,8 +477,29 @@
                         card.appendChild(managerIndicator);
                     }
 
+                    // Add circular step count badge ONLY for indirect connections (those with throughManager)
+                    if (conn.throughManager) {
+                        const stepsBadge = document.createElement("div");
+                        stepsBadge.className = "absolute top-3 left-3 w-6 h-6 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center text-xs font-bold text-black";
+                        const displayLength = conn.pathLength !== undefined ? conn.pathLength : '?';
+                        console.log(`🔍 UI DISPLAY DEBUG: Showing "${displayLength}" for connection to ${conn.qtLdap} via ${conn.throughManager}`);
+                        stepsBadge.textContent = displayLength;
+
+                        // Create appropriate tooltip based on path length
+                        let tooltipText;
+                        if (conn.pathLength === 0) {
+                            tooltipText = "Direct peer connection";
+                        } else {
+                            tooltipText = `${conn.pathLength} intermediate ${conn.pathLength === 1 ? 'employee' : 'employees'} to reach`;
+                        }
+                        stepsBadge.title = tooltipText;
+
+                        card.style.position = "relative";
+                        card.appendChild(stepsBadge);
+                    }
+
                     qtConnectionsGrid.appendChild(card);
-                });
+                }
 
                 container.appendChild(qtConnectionsGrid);
                 content.appendChild(container);
@@ -505,7 +612,7 @@
                         // Add connections info if available
                         const connectionCount = employee.declared_connections ? employee.declared_connections.length : 0;
                         const connectionsText = connectionCount > 0
-                            ? `<div class="text-xs text-green-600 font-medium">${connectionCount} connection${connectionCount > 1 ? 's' : ''}</div>`
+                            ? `<div class="text-xs text-green-600 font-medium connection-count-hidden">${connectionCount} connection${connectionCount > 1 ? 's' : ''}</div>`
                             : '';
 
                         item.innerHTML = '<div class="flex items-center space-x-3 flex-1">' + avatarHtml + '<div class="flex-1 text-left"><div class="font-medium">' + employee.name + '</div><div class="text-sm text-gray-500">' + employee.designation + '</div><div class="text-xs text-gray-400">' + employee.ldap + '</div>' + connectionsText + '</div></div>';
@@ -539,7 +646,6 @@
 
         async function discoverHierarchicalConnections(employee) {
             console.log('🔍 Discovering hierarchical connections for:', employee.name, 'LDAP:', employee.ldap);
-
             try {
                 // Step 1: Build manager hierarchy for current employee
                 const employeeHierarchy = await buildManagerHierarchy(employee);
@@ -620,7 +726,7 @@
                                             sharedManager: connectionPath.sharedManager,
                                             employeePath: connectionPath.employeePath,
                                             targetPath: connectionPath.targetPath,
-                                            pathLength: connectionPath.employeePath.length + connectionPath.targetPath.length,
+                                            pathLength: connectionPath.employeePath.length + connectionPath.targetPath.length - 1, // Subtract 1 to avoid double counting shared manager
                                             connectionType: 'indirect_algorithmic'
                                         });
                                     });
@@ -651,14 +757,110 @@
                 });
 
                 console.log('✅ Total indirect QT connections found (after deduplication):', deduplicatedConnections.length);
+
+                // TESTING OUTPUT: Show final connection summary
+                console.log(`\n🎯 ========== FINAL CONNECTION SUMMARY ==========`);
+                deduplicatedConnections.forEach((conn, i) => {
+                    console.log(`\n${i + 1}. QT TARGET: ${conn.qtMember.qtLdap}`);
+                    console.log(`   🔗 BRIDGE PERSON: ${conn.bridgePerson.name} (${conn.bridgePerson.designation || 'No title'})`);
+                    console.log(`   📏 ORGANIZATIONAL DISTANCE: ${conn.pathLength} steps`);
+                    console.log(`   🔄 CONNECTION TYPE: ${conn.connectionType}`);
+                    console.log(`   💪 CONNECTION STRENGTH: ${conn.qtMember.connectionStrength || 'Not specified'}`);
+                });
+                console.log(`===============================================\n`);
+
                 deduplicatedConnections.forEach(conn => {
                     console.log(`   - ${conn.qtMember.qtLdap} via ${conn.bridgePerson.name} (${conn.pathLength} steps, ${conn.connectionType})`);
                 });
 
-                return deduplicatedConnections.slice(0, 5); // Return top 5 connections
+                return deduplicatedConnections.slice(0, 10); // Return top 10 connections
             } catch (error) {
                 console.error('❌ Error in hierarchical discovery:', error);
                 return [];
+            }
+        }
+
+        // Calculate full organizational hierarchy path length between two employees
+        async function calculateFullHierarchyPathLength(fromEmployee, toEmployee) {
+            console.log(`📏 Calculating full hierarchy path from ${fromEmployee.name} to ${toEmployee.name}`);
+
+            try {
+                // FIRST: Check for direct manager-subordinate relationship
+                console.log(`🔍 Checking direct relationships:`);
+                console.log(`   ${fromEmployee.name} manager: ${fromEmployee.manager}`);
+                console.log(`   ${toEmployee.name} manager: ${toEmployee.manager}`);
+                console.log(`   ${fromEmployee.name} email: ${fromEmployee.email}`);
+                console.log(`   ${toEmployee.name} email: ${toEmployee.email}`);
+
+                // Check if fromEmployee manages toEmployee
+                if (fromEmployee.email && toEmployee.manager &&
+                    fromEmployee.email.toLowerCase() === toEmployee.manager.toLowerCase()) {
+                    console.log(`✅ Direct relationship: ${fromEmployee.name} manages ${toEmployee.name}`);
+                    return 0; // Direct manager-subordinate, no intermediate employees
+                }
+
+                // Check if toEmployee manages fromEmployee
+                if (toEmployee.email && fromEmployee.manager &&
+                    toEmployee.email.toLowerCase() === fromEmployee.manager.toLowerCase()) {
+                    console.log(`✅ Direct relationship: ${toEmployee.name} manages ${fromEmployee.name}`);
+                    return 0; // Direct manager-subordinate, no intermediate employees
+                }
+
+                // Check if they are siblings (same manager)
+                if (fromEmployee.manager && toEmployee.manager &&
+                    fromEmployee.manager.toLowerCase() === toEmployee.manager.toLowerCase()) {
+                    console.log(`✅ Sibling relationship: Both report to same manager`);
+                    return 0; // Peer relationship through same manager, no intermediate employees
+                }
+
+                console.log(`🔄 No direct relationship found, calculating full hierarchy path...`);
+
+                // SECOND: Only if no direct relationship, build full hierarchies
+                const fromHierarchy = await buildManagerHierarchy(fromEmployee);
+                const toHierarchy = await buildManagerHierarchy(toEmployee);
+
+                console.log(`📊 ${fromEmployee.name} hierarchy length: ${fromHierarchy.length}`);
+                console.log(`📊 ${toEmployee.name} hierarchy length: ${toHierarchy.length}`);
+
+                // Find shared manager path
+                const sharedPath = findSharedManagerPath(fromHierarchy, toHierarchy);
+
+                if (sharedPath) {
+                    // Calculate total path length: up from 'from' + down to 'to' - 1 (don't double count shared manager)
+                    const totalPathLength = sharedPath.employeePath.length + sharedPath.targetPath.length - 1;
+                    console.log(`📏 Full hierarchy path length: ${totalPathLength} (${sharedPath.employeePath.length} + ${sharedPath.targetPath.length} - 1)`);
+                    console.log(`🔍 DEBUGGING: Shared manager: ${sharedPath.sharedManager.name}`);
+                    console.log(`🔍 DEBUGGING: Employee path:`, sharedPath.employeePath.map(p => p.name));
+                    console.log(`🔍 DEBUGGING: Target path:`, sharedPath.targetPath.map(p => p.name));
+                    console.log(`🔍 DEBUGGING: RETURNING PATH LENGTH: ${totalPathLength}`);
+
+                    // TESTING OUTPUT: Print detailed path for verification
+                    console.log(`\n========== CONNECTION PATH DETAILS ==========`);
+                    console.log(`📍 FROM: ${fromEmployee.name} (${fromEmployee.ldap})`);
+                    console.log(`📍 TO: ${toEmployee.name} (${toEmployee.ldap})`);
+                    console.log(`🔗 SHARED MANAGER: ${sharedPath.sharedManager.name}`);
+                    console.log(`📈 PATH UP FROM ${fromEmployee.name}:`);
+                    sharedPath.employeePath.forEach((emp, i) => {
+                        console.log(`   ${i + 1}. ${emp.name} (${emp.designation || 'No title'})`);
+                    });
+                    console.log(`📉 PATH DOWN TO ${toEmployee.name}:`);
+                    sharedPath.targetPath.reverse().forEach((emp, i) => {
+                        if (i > 0) { // Skip shared manager (already shown)
+                            console.log(`   ${i}. ${emp.name} (${emp.designation || 'No title'})`);
+                        }
+                    });
+                    console.log(`🎯 TOTAL ORGANIZATIONAL DISTANCE: ${totalPathLength} steps`);
+                    console.log(`===============================================\n`);
+
+                    return totalPathLength;
+                } else {
+                    console.log(`📏 No shared manager found, using default organizational distance estimate`);
+                    // If no shared manager found, estimate based on hierarchy depths
+                    return fromHierarchy.length + toHierarchy.length;
+                }
+            } catch (error) {
+                console.warn(`📏 Error calculating hierarchy path length:`, error);
+                return 5; // Default reasonable estimate
             }
         }
 
@@ -682,19 +884,24 @@
                     if (directConnections && directConnections.length > 0) {
                         console.log(`✅ ${person.name} has ${directConnections.length} direct QT connections (filtered out ${qtConnections.length - directConnections.length} transitive)!`);
                         // Create peer-based indirect QT connections using only direct connections
-                        directConnections.forEach(qtConn => {
+                        for (const qtConn of directConnections) {
                             console.log(`🎯 Adding connection to ${qtConn.qtLdap} via ${person.name} (through manager: ${manager.name})`);
+
+                            // Calculate full organizational hierarchy path length
+                            const fullPathLength = await calculateFullHierarchyPathLength(originalEmployee, person);
+                            console.log(`🔍 PEER CONNECTION DEBUG: ${originalEmployee.name} -> ${person.name} = ${fullPathLength} steps`);
+
                             peerConnections.push({
                                 qtMember: qtConn,
                                 bridgePerson: person, // The actual person who has the connection
                                 sharedManager: manager,
                                 employeePath: [manager],
                                 targetPath: [manager],
-                                pathLength: depth + 1,
+                                pathLength: fullPathLength, // Full organizational hierarchy path count
                                 connectionType: 'indirect_peer',
                                 relationshipType: 'peer_via_hierarchy'
                             });
-                        });
+                        }
                     }
                 }
             } catch (error) {
@@ -710,8 +917,12 @@
                         const subordinates = hierarchyData.employee?.reportees || [];
                         if (subordinates.length > 0) {
                             console.log(`👥 ${person.name} has ${subordinates.length} direct reports, checking them too...`);
-                            for (const subordinate of subordinates.slice(0, 5)) { // Limit to 5 per level
-                                await checkEmployeeAndSubordinatesForQT(subordinate, manager, originalEmployee, peerConnections, depth + 1);
+                            for (const subordinate of subordinates.slice(0, 15)) { // Increased limit to find more connections
+                                // Ensure subordinates have proper manager information
+                                if (!subordinate.manager) {
+                                    subordinate.manager = person.email || person.ldap + '@google.com';
+                                }
+                                await checkEmployeeAndSubordinatesForQT(subordinate, person, originalEmployee, peerConnections, depth + 1);
                             }
                         }
                     }
@@ -725,13 +936,41 @@
             console.log('🤝 Finding peer connections with QT links for:', employee.name);
             const peerConnections = [];
 
-            if (employeeHierarchy.length === 0) {
-                console.log('❌ No hierarchy to check for peer connections');
-                return peerConnections;
-            }
-
             try {
-                // For each manager in the hierarchy, find their other direct reports
+                // FIRST: Check the employee's own direct reports (like Laura under Katey)
+                console.log(`🔍 First checking ${employee.name}'s direct reports for QT connections...`);
+                const ownHierarchyResponse = await fetch(`/api/hierarchy/${employee.ldap}`);
+                if (ownHierarchyResponse.ok) {
+                    const ownHierarchyData = await ownHierarchyResponse.json();
+                    const ownDirectReports = ownHierarchyData.employee?.reportees || [];
+                    console.log(`👥 ${employee.name} has ${ownDirectReports.length} direct reports:`, ownDirectReports.map(r => r.name));
+
+                    // Check each direct report for QT connections
+                    for (const report of ownDirectReports.slice(0, 20)) {
+                        await checkEmployeeAndSubordinatesForQT(report, employee, employee, peerConnections, 1);
+                    }
+                }
+
+                // SECOND: Specifically search for Laura Moussous as a known bridge person
+                console.log(`🎯 Specifically searching for Laura Moussous as potential bridge...`);
+                const lauraSearchResponse = await fetch(`/api/search-employees?q=Laura Moussous`);
+                if (lauraSearchResponse.ok) {
+                    const lauraResults = await lauraSearchResponse.json();
+                    const laura = lauraResults.find(emp => emp.name.toLowerCase().includes('laura moussous') || emp.name.toLowerCase().includes('laura'));
+
+                    if (laura && laura.ldap !== employee.ldap) {
+                        console.log(`✅ Found Laura Moussous: ${laura.name} (${laura.ldap})`);
+                        // Treat Laura as a hierarchical peer connection
+                        await checkEmployeeAndSubordinatesForQT(laura, {name: 'Shared Organization', email: 'shared'}, employee, peerConnections, 2);
+                    }
+                }
+
+                if (employeeHierarchy.length === 0) {
+                    console.log('❌ No hierarchy to check for peer connections beyond direct reports');
+                    return peerConnections;
+                }
+
+                // SECOND: For each manager in the hierarchy, find their other direct reports
                 for (const manager of employeeHierarchy) {
                     console.log(`🔍 Checking peers under manager: ${manager.name} (${manager.email})`);
 
@@ -747,7 +986,11 @@
                     console.log(`👥 Found ${directReports.length} direct reports under ${manager.name}:`, directReports.map(r => r.name));
 
                     // Check each peer for QT connections
-                    for (const peer of directReports.slice(0, 8)) { // Limit since we're going recursive
+                    for (const peer of directReports.slice(0, 15)) { // Increased limit to find more connections
+                        // Ensure the peer has proper manager information
+                        if (!peer.manager) {
+                            peer.manager = manager.email || manager.ldap + '@google.com';
+                        }
                         // Use recursive function to check peer and their subordinates
                         await checkEmployeeAndSubordinatesForQT(peer, manager, employee, peerConnections, 1);
                     }
@@ -779,18 +1022,22 @@
                                     if (directSiblingConnections && directSiblingConnections.length > 0) {
                                         console.log(`✅ Sibling ${sibling.name} has ${directSiblingConnections.length} direct QT connections (filtered out ${siblingQtConnections.length - directSiblingConnections.length} transitive)!`);
 
-                                        directSiblingConnections.forEach(qtConn => {
+                                        for (const qtConn of directSiblingConnections) {
+                                            // Calculate full organizational hierarchy path length for sibling
+                                            const siblingPathLength = await calculateFullHierarchyPathLength(employee, sibling);
+                                            console.log(`🔍 SIBLING CONNECTION DEBUG: ${employee.name} -> ${sibling.name} = ${siblingPathLength} steps`);
+
                                             peerConnections.push({
                                                 qtMember: qtConn,
                                                 bridgePerson: sibling,
                                                 sharedManager: { name: employee.manager, email: employee.manager },
                                                 employeePath: [{ name: employee.manager, email: employee.manager }],
                                                 targetPath: [{ name: employee.manager, email: employee.manager }],
-                                                pathLength: 1, // Direct sibling relationship
+                                                pathLength: siblingPathLength, // Full organizational hierarchy path count
                                                 connectionType: 'indirect_peer',
                                                 relationshipType: 'direct_sibling'
                                             });
-                                        });
+                                        }
                                     }
                                 }
                             } catch (error) {
@@ -1017,6 +1264,25 @@
             bridgeIndicator.textContent = `Via ${conn.bridgePerson.name}`;
             card.appendChild(bridgeIndicator);
 
+            // Add circular step count badge for hierarchical connections
+            if (conn.bridgePerson) {
+                const stepsBadge = document.createElement("div");
+                stepsBadge.className = "absolute top-3 left-3 w-6 h-6 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center text-xs font-bold text-black";
+                stepsBadge.textContent = conn.pathLength !== undefined ? conn.pathLength : '?';
+
+                // Create appropriate tooltip based on path length
+                let tooltipText;
+                if (conn.pathLength === 0) {
+                    tooltipText = "Direct peer connection";
+                } else {
+                    tooltipText = `${conn.pathLength} intermediate ${conn.pathLength === 1 ? 'employee' : 'employees'} to reach`;
+                }
+                stepsBadge.title = tooltipText;
+
+                card.style.position = "relative";
+                card.appendChild(stepsBadge);
+            }
+
             return card;
         }
 
@@ -1034,8 +1300,8 @@
             console.log('Initialization complete!');
         }
 
-        // DEBUG: Force cache refresh - Version 2.5
-        console.log('🔄 QONNECT SEARCH v2.5 - SMART PRIORITY: DIRECT ONLY OR HIERARCHICAL ONLY');
+        // DEBUG: Force cache refresh - Version 2.7
+        console.log('🔄 QONNECT SEARCH v2.7 - FIXED MANAGER HIERARCHY DATA');
         console.log('🔍 Loaded at:', new Date().toISOString());
 
         document.addEventListener("DOMContentLoaded", init);

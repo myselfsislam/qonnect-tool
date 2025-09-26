@@ -122,7 +122,35 @@ def invalidate_connections_cache():
     global cached_connections_data, connections_cache_time
     cached_connections_data = None
     connections_cache_time = None
-    logger.debug("🗑️ Connections cache invalidated")
+
+def calculate_path_length_to_qt_employee(google_ldap, qt_ldap, hierarchy, connection_strength=None):
+    """Calculate the number of intermediate employees to traverse from Google employee to QT employee"""
+    try:
+        # Get the QT employee info
+        qt_employee = next((emp for emp in core_team if emp.get('ldap') == qt_ldap), None)
+        if not qt_employee:
+            return 1  # Default if QT employee not found
+
+        google_employee = get_employee_by_ldap(google_ldap)
+        if not google_employee or not hierarchy:
+            return 1  # Default if no hierarchy available
+
+        # For declared connections in Google Sheets, path length depends on connection strength
+        if connection_strength:
+            strength = connection_strength.lower().strip()
+            if strength == 'strong':
+                return 0  # Direct working relationship, no intermediates
+            elif strength == 'medium':
+                return 1  # Connection through 1 intermediate (e.g., shared project/team)
+            elif strength == 'weak':
+                return 2  # Connection through 2+ intermediates (distant relationship)
+
+        # Default case: assume direct relationship for declared connections
+        return 0
+
+    except Exception as e:
+        logger.debug(f"Error calculating path length from {google_ldap} to {qt_ldap}: {e}")
+        return 1  # Default to 1 intermediate employee on error
 
 class OptimizedGoogleSheetsConnector:
     """Optimized Google Sheets connector with better performance"""
@@ -1554,18 +1582,24 @@ def get_connections_data(employee_ldap):
         try:
             # Use cached connections data to avoid quota issues
             records = get_cached_connections_data()
-            declared_connections = [
-                {
-                    'qtLdap': rec.get('QT Employee LDAP'),
-                    'connectionStrength': rec.get('Connection Strength', '').lower(),
-                    'declaredBy': rec.get('Declared By'),
-                    'timestamp': rec.get('Timestamp'),
-                    'notes': rec.get('Notes'),
-                    'source': 'Google Sheets'
-                }
-                for rec in records
-                if rec.get('Google Employee LDAP') == employee_ldap
-            ]
+            declared_connections = []
+            for rec in records:
+                if rec.get('Google Employee LDAP') == employee_ldap:
+                    qt_ldap = rec.get('QT Employee LDAP')
+
+                    # Calculate pathLength for this connection based on strength
+                    connection_strength = rec.get('Connection Strength', '').lower()
+                    path_length = calculate_path_length_to_qt_employee(employee_ldap, qt_ldap, hierarchy, connection_strength)
+
+                    declared_connections.append({
+                        'qtLdap': qt_ldap,
+                        'connectionStrength': rec.get('Connection Strength', '').lower(),
+                        'declaredBy': rec.get('Declared By'),
+                        'timestamp': rec.get('Timestamp'),
+                        'notes': rec.get('Notes'),
+                        'source': 'Google Sheets',
+                        'pathLength': path_length  # Add calculated path length
+                    })
             logger.debug(f"✅ Found {len(declared_connections)} declared connections for {employee_ldap} from cache.")
             connections.extend(declared_connections)
         except Exception as e:
