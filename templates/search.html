@@ -129,8 +129,6 @@
 
         async function loadFlaskData() {
             try {
-                console.log('Loading data from Flask API...');
-
                 const googleResponse = await fetch('/api/google-employees');
                 if (googleResponse.ok) {
                     const data = await googleResponse.json();
@@ -162,10 +160,8 @@
                     }
                 }
 
-                console.log('API data loaded successfully');
 
             } catch (error) {
-                console.error('Error loading data from API:', error.message);
             }
         }
 
@@ -217,7 +213,6 @@
         }
 
         async function renderConnectionPaths(employee) {
-            console.log('Rendering connection paths for:', employee);
 
             const content = document.createElement("div");
             content.className = "bg-gray-50 min-h-screen p-8";
@@ -228,7 +223,6 @@
                 const declaredConnections = await connectionsResponse.json();
                 employee.declared_connections = declaredConnections || [];
 
-                console.log('Direct connections found:', employee.declared_connections.map(c => c.qtLdap));
             } catch (error) {
                 console.warn('Failed to load connections for', employee.ldap, ':', error);
                 employee.declared_connections = [];
@@ -236,7 +230,6 @@
 
             // FIXED LOGIC: Show only direct connections if available, otherwise show hierarchical
             // Priority: Direct connections ONLY, fallback to hierarchical if no direct connections
-            console.log('🔍 Applying new connection display logic: Direct ONLY or Hierarchical fallback...');
 
             // Step 1: Categorize existing declared connections by type
             const directConnections = [];
@@ -252,15 +245,10 @@
                 });
             }
 
-            console.log('🔍 Found connections:', {
-                direct: directConnections.length,
-                indirect: indirectConnections.length
-            });
 
             // Step 2: Decide what connections to show
             if (directConnections.length > 0) {
                 // Show ONLY direct connections
-                console.log('✅ Showing DIRECT connections only (', directConnections.length, 'found)');
                 employee.declared_connections = directConnections.map(conn => ({
                     ...conn,
                     connectionType: 'direct',
@@ -269,7 +257,6 @@
                 }));
             } else if (indirectConnections.length > 0) {
                 // Show ONLY indirect connections
-                console.log('✅ Showing INDIRECT connections only (', indirectConnections.length, 'found)');
                 employee.declared_connections = indirectConnections.map(conn => ({
                     ...conn,
                     connectionType: 'indirect',
@@ -279,9 +266,7 @@
                 }));
             } else {
                 // Only if NO direct or indirect connections, then search for hierarchical
-                console.log('🔍 No direct/indirect connections found, searching for hierarchical connections...');
                 const hierarchicalConnections = await discoverHierarchicalConnections(employee);
-                console.log('🔍 Discovered hierarchical connections:', hierarchicalConnections.length);
 
                 employee.declared_connections = hierarchicalConnections.map(conn => ({
                     qtLdap: conn.qtMember.qtLdap,
@@ -292,13 +277,8 @@
                     source: 'Hierarchical',
                     pathLength: conn.pathLength // Use actual path length from hierarchical discovery
                 }));
-                console.log('✅ Showing HIERARCHICAL connections only (', hierarchicalConnections.length, 'found)');
             }
 
-            console.log('📊 Final connection display decision:', {
-                total: employee.declared_connections.length,
-                type: employee.declared_connections[0]?.connectionType || 'none'
-            });
 
 
             // Check if we have any connections to show (direct or hierarchical)
@@ -329,12 +309,9 @@
                 qtConnectionsGrid.className = "flex flex-wrap justify-center gap-6 max-w-4xl";
 
                 for (const conn of employee.declared_connections) {
-                    console.log('Looking for QT employee with LDAP:', conn.qtLdap);
-                    console.log('Available QT team members:', coreTeam.map(emp => emp.ldap));
 
                     // Calculate pathLength for indirect connections that don't have it
                     if (conn.throughManager && conn.pathLength === undefined) {
-                        console.log(`🔢 Calculating missing pathLength for indirect connection via ${conn.throughManager}`);
 
                         // Find the bridge person (throughManager) in Google employees
                         try {
@@ -347,22 +324,17 @@
                                 );
 
                                 if (bridgePerson) {
-                                    console.log(`✅ Found bridge person: ${bridgePerson.name}`);
                                     conn.pathLength = await calculateFullHierarchyPathLength(employee, bridgePerson);
-                                    console.log(`📏 Calculated pathLength: ${conn.pathLength}`);
                                 } else {
-                                    console.log(`❌ Bridge person not found for: ${conn.throughManager}`);
                                     conn.pathLength = 3; // Default reasonable estimate
                                 }
                             }
                         } catch (error) {
-                            console.warn(`Error finding bridge person for ${conn.throughManager}:`, error);
                             conn.pathLength = 3; // Default reasonable estimate
                         }
                     }
 
                     // Always use the qtMemberMap for consistent data, ignoring coreTeam API response
-                    console.log('Creating QT employee data for:', conn.qtLdap);
 
                     // Create proper QT employee data based on known QT team members
                     const qtMemberMap = {
@@ -482,7 +454,6 @@
                         const stepsBadge = document.createElement("div");
                         stepsBadge.className = "absolute top-3 left-3 w-6 h-6 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center text-xs font-bold text-black";
                         const displayLength = conn.pathLength !== undefined ? conn.pathLength : '?';
-                        console.log(`🔍 UI DISPLAY DEBUG: Showing "${displayLength}" for connection to ${conn.qtLdap} via ${conn.throughManager}`);
                         stepsBadge.textContent = displayLength;
 
                         // Create appropriate tooltip based on path length
@@ -511,7 +482,6 @@
         }
 
         function showNoConnectionsMessage(content, employee) {
-            console.log('No connections found, showing no connections message');
 
             const container = document.createElement("div");
             container.className = "flex flex-col items-center gap-8";
@@ -546,7 +516,6 @@
                 mainContent.appendChild(pathContent);
                 lucide.createIcons();
             } catch (error) {
-                console.error('Error showing selected employee:', error);
                 mainContent.innerHTML = '<div class="text-center py-16"><p class="text-red-500">Error loading connection paths</p><p class="text-sm text-gray-500 mt-2">' + error.message + '</p></div>';
             }
         }
@@ -588,7 +557,6 @@
                         declared_connections: emp.declared_connections || []
                     }));
                 } catch (error) {
-                    console.error('Search API error, falling back to client-side filter:', error);
                     // Fallback to client-side filtering
                     filtered = googleEmployees
                         .filter(emp =>
@@ -645,19 +613,13 @@
         // ========== ALGORITHMIC HIERARCHICAL CONNECTION DISCOVERY ==========
 
         async function discoverHierarchicalConnections(employee) {
-            console.log('🔍 Discovering hierarchical connections for:', employee.name, 'LDAP:', employee.ldap);
             try {
                 // Step 1: Build manager hierarchy for current employee
                 const employeeHierarchy = await buildManagerHierarchy(employee);
-                console.log('📈 Employee hierarchy built:', employeeHierarchy.map(m => m.name));
 
-                if (employeeHierarchy.length === 0) {
-                    console.warn('⚠️ No manager hierarchy found for', employee.name);
-                }
 
                 // NEW: Step 2A - Find people with shared managers in the hierarchy (peer connections)
                 const peerConnections = await findPeerConnectionsWithQT(employee, employeeHierarchy);
-                console.log('🤝 Found', peerConnections.length, 'peer connections with QT links');
 
                 // DISABLED: Step 2B - Old algorithmic logic disabled to prevent duplicates with peer connections
                 // const potentialTargets = await findConnectionCandidates(employee);
@@ -679,19 +641,6 @@
                 // Convert back to array
                 const deduplicatedConnections = Array.from(uniqueQtConnections.values());
 
-                console.log('🎯 Using peer connections only to avoid duplicates');
-                console.log('🔄 Deduplicated QT connections:', deduplicatedConnections.map(c => ({
-                    qtLdap: c.qtMember.qtLdap,
-                    bridgePerson: c.bridgePerson.name,
-                    connectionType: c.connectionType,
-                    pathLength: c.pathLength
-                })));
-                console.log('DEBUG: Final qtConnections array before sorting:', deduplicatedConnections.map(c => ({
-                    qtLdap: c.qtMember.qtLdap,
-                    bridgePerson: c.bridgePerson.name,
-                    connectionType: c.connectionType,
-                    pathLength: c.pathLength
-                })));
                 // OLD ALGORITHMIC LOGIC DISABLED
                 /*
                 for (const target of potentialTargets.slice(0, 10)) { // Reduced to make room for peer connections
@@ -756,71 +705,50 @@
                     return a.pathLength - b.pathLength;
                 });
 
-                console.log('✅ Total indirect QT connections found (after deduplication):', deduplicatedConnections.length);
-
-                // TESTING OUTPUT: Show final connection summary
-                console.log(`\n🎯 ========== FINAL CONNECTION SUMMARY ==========`);
+                // CLEAN FINAL SUMMARY
                 deduplicatedConnections.forEach((conn, i) => {
-                    console.log(`\n${i + 1}. QT TARGET: ${conn.qtMember.qtLdap}`);
-                    console.log(`   🔗 BRIDGE PERSON: ${conn.bridgePerson.name} (${conn.bridgePerson.designation || 'No title'})`);
-                    console.log(`   📏 ORGANIZATIONAL DISTANCE: ${conn.pathLength} steps`);
-                    console.log(`   🔄 CONNECTION TYPE: ${conn.connectionType}`);
-                    console.log(`   💪 CONNECTION STRENGTH: ${conn.qtMember.connectionStrength || 'Not specified'}`);
-                });
-                console.log(`===============================================\n`);
+                    const qtName = conn.qtMember.qtLdap === 'lihis' ? 'Lihi Segev' :
+                                  conn.qtMember.qtLdap === 'mayank.arya' ? 'Mayank Arya' :
+                                  conn.qtMember.qtLdap;
 
-                deduplicatedConnections.forEach(conn => {
-                    console.log(`   - ${conn.qtMember.qtLdap} via ${conn.bridgePerson.name} (${conn.pathLength} steps, ${conn.connectionType})`);
+                    console.log(`${i + 1}. Connection: ${conn.bridgePerson.name} → ${qtName}`);
+                    console.log(`   - Total organizational distance: ${conn.pathLength} steps`);
                 });
 
                 return deduplicatedConnections.slice(0, 10); // Return top 10 connections
             } catch (error) {
-                console.error('❌ Error in hierarchical discovery:', error);
                 return [];
             }
         }
 
         // Calculate full organizational hierarchy path length between two employees
         async function calculateFullHierarchyPathLength(fromEmployee, toEmployee) {
-            console.log(`📏 Calculating full hierarchy path from ${fromEmployee.name} to ${toEmployee.name}`);
 
             try {
                 // FIRST: Check for direct manager-subordinate relationship
-                console.log(`🔍 Checking direct relationships:`);
-                console.log(`   ${fromEmployee.name} manager: ${fromEmployee.manager}`);
-                console.log(`   ${toEmployee.name} manager: ${toEmployee.manager}`);
-                console.log(`   ${fromEmployee.name} email: ${fromEmployee.email}`);
-                console.log(`   ${toEmployee.name} email: ${toEmployee.email}`);
 
                 // Check if fromEmployee manages toEmployee
                 if (fromEmployee.email && toEmployee.manager &&
                     fromEmployee.email.toLowerCase() === toEmployee.manager.toLowerCase()) {
-                    console.log(`✅ Direct relationship: ${fromEmployee.name} manages ${toEmployee.name}`);
                     return 0; // Direct manager-subordinate, no intermediate employees
                 }
 
                 // Check if toEmployee manages fromEmployee
                 if (toEmployee.email && fromEmployee.manager &&
                     toEmployee.email.toLowerCase() === fromEmployee.manager.toLowerCase()) {
-                    console.log(`✅ Direct relationship: ${toEmployee.name} manages ${fromEmployee.name}`);
                     return 0; // Direct manager-subordinate, no intermediate employees
                 }
 
                 // Check if they are siblings (same manager)
                 if (fromEmployee.manager && toEmployee.manager &&
                     fromEmployee.manager.toLowerCase() === toEmployee.manager.toLowerCase()) {
-                    console.log(`✅ Sibling relationship: Both report to same manager`);
                     return 0; // Peer relationship through same manager, no intermediate employees
                 }
 
-                console.log(`🔄 No direct relationship found, calculating full hierarchy path...`);
 
                 // SECOND: Only if no direct relationship, build full hierarchies
                 const fromHierarchy = await buildManagerHierarchy(fromEmployee);
                 const toHierarchy = await buildManagerHierarchy(toEmployee);
-
-                console.log(`📊 ${fromEmployee.name} hierarchy length: ${fromHierarchy.length}`);
-                console.log(`📊 ${toEmployee.name} hierarchy length: ${toHierarchy.length}`);
 
                 // Find shared manager path
                 const sharedPath = findSharedManagerPath(fromHierarchy, toHierarchy);
@@ -828,49 +756,32 @@
                 if (sharedPath) {
                     // Calculate total path length: up from 'from' + down to 'to' - 1 (don't double count shared manager)
                     const totalPathLength = sharedPath.employeePath.length + sharedPath.targetPath.length - 1;
-                    console.log(`📏 Full hierarchy path length: ${totalPathLength} (${sharedPath.employeePath.length} + ${sharedPath.targetPath.length} - 1)`);
-                    console.log(`🔍 DEBUGGING: Shared manager: ${sharedPath.sharedManager.name}`);
-                    console.log(`🔍 DEBUGGING: Employee path:`, sharedPath.employeePath.map(p => p.name));
-                    console.log(`🔍 DEBUGGING: Target path:`, sharedPath.targetPath.map(p => p.name));
-                    console.log(`🔍 DEBUGGING: RETURNING PATH LENGTH: ${totalPathLength}`);
+                    // CLEAN OUTPUT: Print path in requested format with employee names
+                    const upPath = sharedPath.employeePath.map(emp => emp.name).join(' → ');
+                    const downPath = sharedPath.targetPath.slice(1).reverse().map(emp => emp.name).join(' → '); // Skip shared manager and reverse
 
-                    // TESTING OUTPUT: Print detailed path for verification
-                    console.log(`\n========== CONNECTION PATH DETAILS ==========`);
-                    console.log(`📍 FROM: ${fromEmployee.name} (${fromEmployee.ldap})`);
-                    console.log(`📍 TO: ${toEmployee.name} (${toEmployee.ldap})`);
-                    console.log(`🔗 SHARED MANAGER: ${sharedPath.sharedManager.name}`);
-                    console.log(`📈 PATH UP FROM ${fromEmployee.name}:`);
-                    sharedPath.employeePath.forEach((emp, i) => {
-                        console.log(`   ${i + 1}. ${emp.name} (${emp.designation || 'No title'})`);
-                    });
-                    console.log(`📉 PATH DOWN TO ${toEmployee.name}:`);
-                    sharedPath.targetPath.reverse().forEach((emp, i) => {
-                        if (i > 0) { // Skip shared manager (already shown)
-                            console.log(`   ${i}. ${emp.name} (${emp.designation || 'No title'})`);
-                        }
-                    });
-                    console.log(`🎯 TOTAL ORGANIZATIONAL DISTANCE: ${totalPathLength} steps`);
-                    console.log(`===============================================\n`);
+                    if (downPath) {
+                        console.log(`${fromEmployee.name} → ${upPath} → ${downPath} → ${toEmployee.name}`);
+                    } else {
+                        console.log(`${fromEmployee.name} → ${upPath} → ${toEmployee.name}`);
+                    }
+                    console.log(`   - Total organizational distance: ${totalPathLength} steps`);
 
                     return totalPathLength;
                 } else {
-                    console.log(`📏 No shared manager found, using default organizational distance estimate`);
                     // If no shared manager found, estimate based on hierarchy depths
                     return fromHierarchy.length + toHierarchy.length;
                 }
             } catch (error) {
-                console.warn(`📏 Error calculating hierarchy path length:`, error);
                 return 5; // Default reasonable estimate
             }
         }
 
         // NEW: Find peer connections through shared managers (for Laura/Mellissa scenario)
         async function checkEmployeeAndSubordinatesForQT(person, manager, originalEmployee, peerConnections, depth = 1) {
-            console.log(`🔍 [Depth ${depth}] Checking ${person.name} (${person.ldap}) for QT connections`);
 
             // Skip if this is the original employee
             if (person.ldap === originalEmployee.ldap) {
-                console.log(`⏭️ Skipping self: ${person.name}`);
                 return;
             }
 
@@ -882,14 +793,11 @@
                     // Filter out transitive connections to avoid wrong attributions
                     const directConnections = qtConnections.filter(conn => conn.source !== 'Transitive');
                     if (directConnections && directConnections.length > 0) {
-                        console.log(`✅ ${person.name} has ${directConnections.length} direct QT connections (filtered out ${qtConnections.length - directConnections.length} transitive)!`);
                         // Create peer-based indirect QT connections using only direct connections
                         for (const qtConn of directConnections) {
-                            console.log(`🎯 Adding connection to ${qtConn.qtLdap} via ${person.name} (through manager: ${manager.name})`);
 
                             // Calculate full organizational hierarchy path length
                             const fullPathLength = await calculateFullHierarchyPathLength(originalEmployee, person);
-                            console.log(`🔍 PEER CONNECTION DEBUG: ${originalEmployee.name} -> ${person.name} = ${fullPathLength} steps`);
 
                             peerConnections.push({
                                 qtMember: qtConn,
@@ -905,7 +813,6 @@
                     }
                 }
             } catch (error) {
-                console.warn(`Error checking QT connections for ${person.name}:`, error);
             }
 
             // Recursively check their direct reports (but limit depth to prevent too many API calls)
@@ -916,7 +823,6 @@
                         const hierarchyData = await hierarchyResponse.json();
                         const subordinates = hierarchyData.employee?.reportees || [];
                         if (subordinates.length > 0) {
-                            console.log(`👥 ${person.name} has ${subordinates.length} direct reports, checking them too...`);
                             for (const subordinate of subordinates.slice(0, 15)) { // Increased limit to find more connections
                                 // Ensure subordinates have proper manager information
                                 if (!subordinate.manager) {
@@ -927,23 +833,19 @@
                         }
                     }
                 } catch (error) {
-                    console.warn(`Error getting hierarchy for ${person.name}:`, error);
                 }
             }
         }
 
         async function findPeerConnectionsWithQT(employee, employeeHierarchy) {
-            console.log('🤝 Finding peer connections with QT links for:', employee.name);
             const peerConnections = [];
 
             try {
                 // FIRST: Check the employee's own direct reports (like Laura under Katey)
-                console.log(`🔍 First checking ${employee.name}'s direct reports for QT connections...`);
                 const ownHierarchyResponse = await fetch(`/api/hierarchy/${employee.ldap}`);
                 if (ownHierarchyResponse.ok) {
                     const ownHierarchyData = await ownHierarchyResponse.json();
                     const ownDirectReports = ownHierarchyData.employee?.reportees || [];
-                    console.log(`👥 ${employee.name} has ${ownDirectReports.length} direct reports:`, ownDirectReports.map(r => r.name));
 
                     // Check each direct report for QT connections
                     for (const report of ownDirectReports.slice(0, 20)) {
@@ -952,38 +854,32 @@
                 }
 
                 // SECOND: Specifically search for Laura Moussous as a known bridge person
-                console.log(`🎯 Specifically searching for Laura Moussous as potential bridge...`);
                 const lauraSearchResponse = await fetch(`/api/search-employees?q=Laura Moussous`);
                 if (lauraSearchResponse.ok) {
                     const lauraResults = await lauraSearchResponse.json();
                     const laura = lauraResults.find(emp => emp.name.toLowerCase().includes('laura moussous') || emp.name.toLowerCase().includes('laura'));
 
                     if (laura && laura.ldap !== employee.ldap) {
-                        console.log(`✅ Found Laura Moussous: ${laura.name} (${laura.ldap})`);
                         // Treat Laura as a hierarchical peer connection
                         await checkEmployeeAndSubordinatesForQT(laura, {name: 'Shared Organization', email: 'shared'}, employee, peerConnections, 2);
                     }
                 }
 
                 if (employeeHierarchy.length === 0) {
-                    console.log('❌ No hierarchy to check for peer connections beyond direct reports');
                     return peerConnections;
                 }
 
                 // SECOND: For each manager in the hierarchy, find their other direct reports
                 for (const manager of employeeHierarchy) {
-                    console.log(`🔍 Checking peers under manager: ${manager.name} (${manager.email})`);
 
                     // Search for employees managed by this manager
                     const hierarchyResponse = await fetch(`/api/hierarchy/${manager.ldap}`);
                     if (!hierarchyResponse.ok) {
-                        console.log(`⚠️ Could not get hierarchy for manager ${manager.name}`);
                         continue;
                     }
 
                     const hierarchyData = await hierarchyResponse.json();
                     const directReports = hierarchyData.employee?.reportees || [];
-                    console.log(`👥 Found ${directReports.length} direct reports under ${manager.name}:`, directReports.map(r => r.name));
 
                     // Check each peer for QT connections
                     for (const peer of directReports.slice(0, 15)) { // Increased limit to find more connections
@@ -1001,14 +897,11 @@
 
                 // Also check for peers at the same level (siblings in org chart)
                 if (employee.manager) {
-                    console.log(`👫 Checking for sibling peers under ${employee.manager}`);
 
                     const siblingSearch = await fetch(`/api/search-employees?manager=${encodeURIComponent(employee.manager)}`);
                     if (siblingSearch.ok) {
                         const siblings = await siblingSearch.json();
                         const filteredSiblings = siblings.filter(emp => emp.ldap !== employee.ldap);
-
-                        console.log(`👫 Found ${filteredSiblings.length} sibling peers`);
 
                         // Check siblings for QT connections (similar logic as above)
                         for (const sibling of filteredSiblings.slice(0, 5)) {
@@ -1020,13 +913,11 @@
                                     const directSiblingConnections = siblingQtConnections.filter(conn => conn.source !== 'Transitive');
 
                                     if (directSiblingConnections && directSiblingConnections.length > 0) {
-                                        console.log(`✅ Sibling ${sibling.name} has ${directSiblingConnections.length} direct QT connections (filtered out ${siblingQtConnections.length - directSiblingConnections.length} transitive)!`);
 
                                         for (const qtConn of directSiblingConnections) {
                                             // Calculate full organizational hierarchy path length for sibling
                                             const siblingPathLength = await calculateFullHierarchyPathLength(employee, sibling);
-                                            console.log(`🔍 SIBLING CONNECTION DEBUG: ${employee.name} -> ${sibling.name} = ${siblingPathLength} steps`);
-
+                
                                             peerConnections.push({
                                                 qtMember: qtConn,
                                                 bridgePerson: sibling,
@@ -1041,7 +932,6 @@
                                     }
                                 }
                             } catch (error) {
-                                console.warn(`Failed to check QT connections for sibling ${sibling.name}:`, error);
                             }
 
                             await new Promise(resolve => setTimeout(resolve, 200));
@@ -1049,21 +939,17 @@
                     }
                 }
 
-                console.log(`🎉 Found ${peerConnections.length} peer connections with QT links`);
                 return peerConnections;
 
             } catch (error) {
-                console.error('❌ Error finding peer connections:', error);
                 return peerConnections;
             }
         }
 
         async function buildManagerHierarchy(employee) {
-            console.log('🔗 Building manager hierarchy for:', employee.name, 'Manager email:', employee.manager);
             const hierarchy = [];
 
             if (!employee.manager) {
-                console.log('❌ No manager email found for', employee.name);
                 return hierarchy;
             }
 
@@ -1072,32 +958,25 @@
                 let depth = 0;
                 const maxDepth = 6; // Limit hierarchy depth
 
-                console.log(`🔍 Starting hierarchy build with manager: ${currentManagerEmail}`);
 
                 while (currentManagerEmail && depth < maxDepth) {
-                    console.log(`🔍 Searching for manager: ${currentManagerEmail} (depth ${depth})`);
                     const response = await fetch(`/api/search-employees?q=${encodeURIComponent(currentManagerEmail)}`);
 
                     if (!response.ok) {
-                        console.log(`❌ API response failed: ${response.status}`);
                         break;
                     }
 
                     const results = await response.json();
-                    console.log(`📋 Search results for ${currentManagerEmail}:`, results.length, 'results');
 
                     const manager = results.find(emp => emp.email === currentManagerEmail);
 
                     if (!manager) {
-                        console.log(`❌ No exact email match found for: ${currentManagerEmail}`);
                         // Try searching by the email prefix (before @)
                         const emailPrefix = currentManagerEmail.split('@')[0];
                         const prefixMatch = results.find(emp => emp.ldap === emailPrefix || emp.email?.includes(emailPrefix));
 
                         if (prefixMatch) {
-                            console.log(`✅ Found manager by prefix match: ${prefixMatch.name}`);
                             hierarchy.push(prefixMatch);
-                            console.log(`Level ${depth + 1}: ${prefixMatch.name} (${prefixMatch.designation || 'No designation'})`);
                             currentManagerEmail = prefixMatch.manager;
                             depth++;
                         } else {
@@ -1105,8 +984,6 @@
                         }
                     } else {
                         hierarchy.push(manager);
-                        console.log(`✅ Level ${depth + 1}: ${manager.name} (${manager.designation || 'No designation'})`);
-
                         currentManagerEmail = manager.manager;
                         depth++;
                     }
@@ -1115,16 +992,14 @@
                     await new Promise(resolve => setTimeout(resolve, 150));
                 }
 
-                console.log(`📈 Final hierarchy for ${employee.name}:`, hierarchy.length, 'levels');
             } catch (error) {
-                console.warn('⚠️ Error building manager hierarchy:', error);
+                // Ignore hierarchy building errors
             }
 
             return hierarchy;
         }
 
         async function findConnectionCandidates(employee) {
-            console.log('🎯 Finding connection candidates for:', employee.name);
 
             const candidates = new Map(); // Use Map to avoid duplicates
 
@@ -1167,16 +1042,14 @@
                 }
 
             } catch (error) {
-                console.warn('⚠️ Error finding connection candidates:', error);
+                // Ignore connection candidate errors
             }
 
             const candidateList = Array.from(candidates.values());
-            console.log('📋 Found', candidateList.length, 'unique connection candidates');
             return candidateList;
         }
 
         function findSharedManagerPath(hierarchy1, hierarchy2) {
-            console.log('🔍 Looking for shared manager path...');
 
             // Find the lowest common manager in the hierarchies
             for (let i = 0; i < hierarchy1.length; i++) {
@@ -1186,7 +1059,6 @@
                     const manager2 = hierarchy2[j];
 
                     if (manager1.email === manager2.email) {
-                        console.log(`✅ Found shared manager: ${manager1.name} at level ${i + 1} and ${j + 1}`);
 
                         return {
                             sharedManager: manager1,
@@ -1201,7 +1073,6 @@
         }
 
         function createHierarchicalConnectionCard(conn) {
-            console.log('🌐 Creating hierarchical QT connection card for:', conn.qtMember.qtLdap);
 
             const card = document.createElement("div");
             card.className = "employee-card qt-card"; // Use QT card styling since it's a QT member
@@ -1288,21 +1159,12 @@
 
 
         async function init() {
-            console.log('Initializing Qonnect...');
             await loadFlaskData();
-
-            console.log('Data loaded:');
-            console.log('- Google employees:', googleEmployees.length);
-            console.log('- QT team:', coreTeam.length);
-
             setupSearch();
             lucide.createIcons();
-            console.log('Initialization complete!');
         }
 
-        // DEBUG: Force cache refresh - Version 2.7
-        console.log('🔄 QONNECT SEARCH v2.7 - FIXED MANAGER HIERARCHY DATA');
-        console.log('🔍 Loaded at:', new Date().toISOString());
+        // Clean console - only connection paths
 
         document.addEventListener("DOMContentLoaded", init);
     </script>
