@@ -644,7 +644,6 @@
                 // OLD ALGORITHMIC LOGIC DISABLED
                 /*
                 for (const target of potentialTargets.slice(0, 10)) { // Reduced to make room for peer connections
-                    console.log(`🔍 Checking algorithmic target: ${target.name} (${target.ldap})`);
 
                     const targetHierarchy = await buildManagerHierarchy(target);
                     console.log(`📈 Target hierarchy for ${target.name}:`, targetHierarchy.map(m => m.name));
@@ -652,23 +651,18 @@
                     const connectionPath = findSharedManagerPath(employeeHierarchy, targetHierarchy);
 
                     if (connectionPath) {
-                        console.log(`🔗 Found hierarchical path to ${target.name} via ${connectionPath.sharedManager.name}`);
 
                         // Check if this P&C employee has declared connections to QT members
                         try {
-                            console.log(`🔍 Checking QT connections for ${target.name} (${target.ldap})`);
                             const qtConnectionsResponse = await fetch(`/api/connections/${target.ldap}`);
 
                             if (qtConnectionsResponse.ok) {
                                 const declaredQtConnections = await qtConnectionsResponse.json();
-                                console.log(`📋 QT connections response for ${target.name}:`, declaredQtConnections);
 
                                 if (declaredQtConnections && declaredQtConnections.length > 0) {
-                                    console.log(`✅ ${target.name} has ${declaredQtConnections.length} QT connections:`, declaredQtConnections.map(c => c.qtLdap));
 
                                     // Create indirect QT connections via this algorithmic bridge
                                     declaredQtConnections.forEach(qtConn => {
-                                        console.log(`🎯 Adding indirect connection to ${qtConn.qtLdap} via ${target.name}`);
                                         qtConnections.push({
                                             qtMember: qtConn,
                                             bridgePerson: target,
@@ -680,10 +674,8 @@
                                         });
                                     });
                                 } else {
-                                    console.log(`❌ No QT connections found for ${target.name}`);
                                 }
                             } else {
-                                console.log(`❌ Failed to fetch QT connections for ${target.name}:`, qtConnectionsResponse.status);
                             }
                         } catch (error) {
                             console.warn(`Failed to check QT connections for ${target.name}:`, error);
@@ -692,7 +684,6 @@
                         // Small delay to prevent API overload
                         await new Promise(resolve => setTimeout(resolve, 300));
                     } else {
-                        console.log(`❌ No shared manager path found between ${employee.name} and ${target.name}`);
                     }
                 }
                 */
@@ -756,9 +747,14 @@
                 if (sharedPath) {
                     // Calculate total path length: up from 'from' + down to 'to' - 1 (don't double count shared manager)
                     const totalPathLength = sharedPath.employeePath.length + sharedPath.targetPath.length - 1;
+
                     // CLEAN OUTPUT: Print path in requested format with employee names
                     const upPath = sharedPath.employeePath.map(emp => emp.name).join(' → ');
-                    const downPath = sharedPath.targetPath.slice(1).reverse().map(emp => emp.name).join(' → '); // Skip shared manager and reverse
+
+                    // For downPath, we need to go from shared manager DOWN to target employee
+                    // targetPath contains [from target UP to shared], so we need to reverse it and exclude the shared manager
+                    const downPathArray = sharedPath.targetPath.slice(0, -1).reverse(); // Remove shared manager (last element) and reverse
+                    const downPath = downPathArray.map(emp => emp.name).join(' → ');
 
                     if (downPath) {
                         console.log(`${fromEmployee.name} → ${upPath} → ${downPath} → ${toEmployee.name}`);
@@ -957,9 +953,15 @@
                 let currentManagerEmail = employee.manager;
                 let depth = 0;
                 const maxDepth = 6; // Limit hierarchy depth
-
+                const processedManagers = new Set(); // Prevent infinite loops
 
                 while (currentManagerEmail && depth < maxDepth) {
+                    // Prevent infinite loops by checking if we've already processed this manager
+                    if (processedManagers.has(currentManagerEmail.toLowerCase())) {
+                        break;
+                    }
+                    processedManagers.add(currentManagerEmail.toLowerCase());
+
                     const response = await fetch(`/api/search-employees?q=${encodeURIComponent(currentManagerEmail)}`);
 
                     if (!response.ok) {
@@ -968,24 +970,48 @@
 
                     const results = await response.json();
 
-                    const manager = results.find(emp => emp.email === currentManagerEmail);
+                    // Try multiple matching strategies to find the manager
+                    let manager = null;
+
+                    // Strategy 1: Exact email match (case-insensitive)
+                    manager = results.find(emp => emp.email && emp.email.toLowerCase() === currentManagerEmail.toLowerCase());
 
                     if (!manager) {
-                        // Try searching by the email prefix (before @)
-                        const emailPrefix = currentManagerEmail.split('@')[0];
-                        const prefixMatch = results.find(emp => emp.ldap === emailPrefix || emp.email?.includes(emailPrefix));
+                        // Strategy 2: LDAP match (email prefix)
+                        const emailPrefix = currentManagerEmail.split('@')[0].toLowerCase();
+                        manager = results.find(emp => emp.ldap && emp.ldap.toLowerCase() === emailPrefix);
+                    }
 
-                        if (prefixMatch) {
-                            hierarchy.push(prefixMatch);
-                            currentManagerEmail = prefixMatch.manager;
-                            depth++;
-                        } else {
-                            break;
+                    if (!manager) {
+                        // Strategy 3: Partial email match in case of domain differences
+                        const emailPrefix = currentManagerEmail.split('@')[0].toLowerCase();
+                        manager = results.find(emp => emp.email && emp.email.toLowerCase().includes(emailPrefix));
+                    }
+
+                    if (!manager) {
+                        // Strategy 4: Name-based search if email looks like a name
+                        const nameFromEmail = currentManagerEmail.split('@')[0].replace(/\./g, ' ').toLowerCase();
+                        manager = results.find(emp => emp.name && emp.name.toLowerCase().includes(nameFromEmail));
+                    }
+
+                    if (!manager) {
+                        // Strategy 5: Try to search by the current manager email as a direct query
+                        const directSearchResponse = await fetch(`/api/search-employees?q=${encodeURIComponent(currentManagerEmail.split('@')[0])}`);
+                        if (directSearchResponse.ok) {
+                            const directResults = await directSearchResponse.json();
+                            manager = directResults.find(emp =>
+                                emp.email && emp.email.toLowerCase() === currentManagerEmail.toLowerCase() ||
+                                emp.ldap && emp.ldap.toLowerCase() === currentManagerEmail.split('@')[0].toLowerCase()
+                            );
                         }
-                    } else {
+                    }
+
+                    if (manager) {
                         hierarchy.push(manager);
                         currentManagerEmail = manager.manager;
                         depth++;
+                    } else {
+                        break;
                     }
 
                     // Small delay to prevent API overload
