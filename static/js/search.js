@@ -1,58 +1,14 @@
-let googleEmployees = [];
-let coreTeam = [];
 let selectedEmployee = null;
-let connectionData = [];
-const employeeMap = new Map();
-let coreTeamMap = new Map();
+const employeeCache = new Map();
+let searchCache = new Map();
 
+// Lightweight initialization - no bulk data loading
 async function loadFlaskData() {
     try {
-        console.log('Loading data from Flask API...');
-        
-        const googleResponse = await fetch('/api/google-employees');
-        if (googleResponse.ok) {
-            const data = await googleResponse.json();
-            googleEmployees = data.map(emp => ({
-                ldap: emp.ldap,
-                email: emp.email || emp.ldap + '@google.com',
-                avatar: emp['MOMA Photo URL'] || emp.avatar || null,
-                name: emp.name,
-                company: emp.company || "GOOGLE",
-                designation: emp.designation,
-                organisation: emp.organisation || emp.department || "Google",
-                manager: emp.manager || null,
-            }));
-        }
-
-        const qtResponse = await fetch('/api/qt-team');
-        if (qtResponse.ok) {
-            const qtData = await qtResponse.json();
-            coreTeam = qtData.map(emp => ({
-                ldap: emp.ldap,
-                email: emp.email || emp.ldap + '@qualitestgroup.com',
-                avatar: emp.avatar || 'https://i.pravatar.cc/150?u=' + emp.ldap,
-                name: emp.name,
-                company: emp.company || "QT",
-                designation: emp.designation,
-                organisation: emp.organisation || emp.department || "QT",
-            }));
-            coreTeam.forEach(emp => coreTeamMap.set(emp.ldap, emp));
-        }
-
-        const connectionsResponse = await fetch('/api/connections-from-sheets');
-        if (connectionsResponse.ok) {
-            const sheetsData = await connectionsResponse.json();
-            connectionData = sheetsData.connections || [];
-        }
-        
-        console.log('API data loaded successfully');
-        
+        console.log('Application initialized - using server-side search');
+        // No bulk data loading - use search API instead
     } catch (error) {
-        console.log('API not available, using sample data');
-        googleEmployees = sampleGoogleEmployees;
-        coreTeam = sampleCoreTeam;
-        coreTeam.forEach(emp => coreTeamMap.set(emp.ldap, emp));
-        connectionData = sampleConnectionData;
+        console.error('Initialization error:', error);
     }
 }
 
@@ -65,11 +21,7 @@ function isValidImageUrl(url) {
     return url && url.trim() !== '' && (url.startsWith('http://') || url.startsWith('https://'));
 }
 
-function updateEmployeeMap() {
-    employeeMap.clear();
-    googleEmployees.forEach((e) => employeeMap.set(e.ldap, e));
-    coreTeam.forEach((e) => employeeMap.set(e.ldap, e));
-}
+// Removed - no longer needed with server-side search
 
 function createEmployeeCard(employee, isTarget = false, stepCount = null, connectionStrength = null) {
     if (!employee) return document.createElement("div");
@@ -116,52 +68,26 @@ function createEmployeeCard(employee, isTarget = false, stepCount = null, connec
     return card;
 }
 
-function getConnectionsForEmployee(employee) {
-    console.log('Looking for connections for employee:', employee.name, employee.ldap, employee.email);
-    
-    const connections = connectionData.filter(conn => {
-        const googleLdap = (conn['Google Employee LDAP'] || '').trim().toLowerCase();
-        const googleEmail = (conn['Google Employee Email'] || '').trim().toLowerCase();
-        const googleName = (conn['Google Employee Name'] || '').trim().toLowerCase();
-        
-        const empLdap = (employee.ldap || '').trim().toLowerCase();
-        const empEmail = (employee.email || '').trim().toLowerCase();
-        const empName = (employee.name || '').trim().toLowerCase();
-        
-        const match = googleLdap === empLdap || 
-                     googleEmail === empEmail ||
-                     googleName === empName ||
-                     (googleLdap && empLdap && googleLdap.includes(empLdap)) ||
-                     (empLdap && googleLdap && empLdap.includes(googleLdap));
-        
-        if (match) {
-            console.log('Connection found:', conn);
+async function getConnectionsForEmployee(employee) {
+    console.log('Fetching connections for employee:', employee.name, employee.ldap);
+
+    try {
+        const response = await fetch(`/api/connections/${employee.ldap}`);
+        if (!response.ok) {
+            console.warn('Failed to fetch connections from API');
+            return [];
         }
-        
-        return match;
-    });
-    
-    console.log('Total connections found for', employee.name, ':', connections.length);
-    return connections;
+        const connections = await response.json();
+        console.log('Total connections found for', employee.name, ':', connections.length);
+        return connections;
+    } catch (error) {
+        console.error('Error fetching connections:', error);
+        return [];
+    }
 }
 
 function findQTEmployee(qtLdap, qtName, qtEmail) {
-    let qtEmployee = coreTeamMap.get(qtLdap);
-    
-    if (qtEmployee) {
-        return qtEmployee;
-    }
-    
-    // Fallback to iterating if not found by LDAP (e.g., if qtLdap was not the primary key in coreTeamMap)
-    qtEmployee = coreTeam.find((e) => 
-        e.email === qtEmail || 
-        e.name === qtName
-    );
-
-    if (qtEmployee) {
-        return qtEmployee;
-    }
-    
+    // Return a lightweight QT employee object based on connection data
     if (qtName && qtLdap) {
         return {
             ldap: qtLdap,
@@ -173,44 +99,29 @@ function findQTEmployee(qtLdap, qtName, qtEmail) {
             avatar: 'https://i.pravatar.cc/150?u=' + qtLdap
         };
     }
-    
+
     return null;
 }
 
-// NEW: Function to find hierarchical connections
+// Simplified: Use backend API for connection discovery
 async function findHierarchicalConnections(targetEmployee) {
-    const directConnections = getConnectionsForEmployee(targetEmployee);
-    if (directConnections.length > 0) {
-        return [{
-            path: [targetEmployee],
-            connections: directConnections,
-            stepCount: 0 // Direct connection
-        }];
-    }
+    try {
+        // Backend handles all connection logic now
+        const connections = await getConnectionsForEmployee(targetEmployee);
 
-    // If no direct connections, try through managers
-    const hierarchyResponse = await fetch(`/api/hierarchy/${targetEmployee.ldap}`);
-    if (!hierarchyResponse.ok) {
-        console.error('Failed to fetch hierarchy for', targetEmployee.ldap);
+        if (connections.length > 0) {
+            return [{
+                path: [targetEmployee],
+                connections: connections,
+                stepCount: 0
+            }];
+        }
+
+        return [];
+    } catch (error) {
+        console.error('Error finding connections:', error);
         return [];
     }
-    const hierarchyData = await hierarchyResponse.json();
-    const managerChain = hierarchyData.manager_chain || [];
-
-    const hierarchicalPaths = [];
-
-    for (let i = 0; i < managerChain.length; i++) {
-        const manager = managerChain[i];
-        const managerConnections = getConnectionsForEmployee(manager);
-        if (managerConnections.length > 0) {
-            hierarchicalPaths.push({
-                path: [targetEmployee, ...managerChain.slice(0, i + 1)],
-                connections: managerConnections,
-                stepCount: i + 1 // Number of managers in between
-            });
-        }
-    }
-    return hierarchicalPaths;
 }
 
 function renderNoConnections(employee) {
@@ -264,13 +175,15 @@ async function renderConnectionPaths(employee) {
             const qtSection = document.createElement("div");
             qtSection.className = "flex justify-center gap-8 flex-wrap mt-8";
             pathData.connections.forEach((conn) => {
+                // Backend returns qtLdap, not 'QT Employee LDAP'
                 const qtEmployee = findQTEmployee(
-                    conn['QT Employee LDAP'], 
-                    conn['QT Employee Name'], 
-                    conn['QT Employee Email']
+                    conn.qtLdap || conn['QT Employee LDAP'],
+                    conn.qtName || conn['QT Employee Name'],
+                    conn.qtEmail || conn['QT Employee Email']
                 );
                 if (qtEmployee) {
-                    const qtCard = createEmployeeCard(qtEmployee, false, pathData.stepCount + 1, conn['Connection Strength']);
+                    const strength = conn.connectionStrength || conn['Connection Strength'];
+                    const qtCard = createEmployeeCard(qtEmployee, false, pathData.stepCount + 1, strength);
                     qtSection.appendChild(qtCard);
                 }
             });
@@ -345,10 +258,16 @@ function renderSuggestionItem(employee) {
 function setupSearch() {
     const searchInput = document.getElementById("searchInput");
     const suggestions = document.getElementById("suggestions");
+    let searchTimeout;
 
     searchInput.addEventListener("input", async (e) => {
-        const searchTerm = e.target.value.toLowerCase();
-        
+        const searchTerm = e.target.value.trim();
+
+        // Clear previous timeout
+        if (searchTimeout) {
+            clearTimeout(searchTimeout);
+        }
+
         if (searchTerm.length === 0) {
             suggestions.classList.add("hidden");
             selectedEmployee = null;
@@ -356,26 +275,46 @@ function setupSearch() {
             return;
         }
 
-        let filtered = googleEmployees
-            .filter(emp =>
-                emp.name.toLowerCase().includes(searchTerm) || 
-                emp.ldap.toLowerCase().includes(searchTerm) || 
-                emp.designation.toLowerCase().includes(searchTerm)
-            )
-            .slice(0, 20);
-
-        suggestions.innerHTML = "";
-        if (filtered.length > 0) {
-            filtered.forEach((employee) => {
-                const item = renderSuggestionItem(employee);
-                suggestions.appendChild(item);
-            });
+        if (searchTerm.length < 2) {
+            suggestions.innerHTML = '<div class="p-4 text-gray-500 text-sm">Type at least 2 characters...</div>';
             suggestions.classList.remove("hidden");
-        } else {
-            suggestions.classList.add("hidden");
+            return;
         }
+
+        // Debounce search by 300ms
+        searchTimeout = setTimeout(async () => {
+            try {
+                // Show loading state
+                suggestions.innerHTML = '<div class="p-4 text-gray-500 text-sm">Searching...</div>';
+                suggestions.classList.remove("hidden");
+
+                // Use backend search API
+                const response = await fetch(`/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
+                if (!response.ok) {
+                    throw new Error('Search failed');
+                }
+
+                const filtered = await response.json();
+
+                suggestions.innerHTML = "";
+                if (filtered.length > 0) {
+                    filtered.forEach((employee) => {
+                        const item = renderSuggestionItem(employee);
+                        suggestions.appendChild(item);
+                    });
+                    suggestions.classList.remove("hidden");
+                } else {
+                    suggestions.innerHTML = '<div class="p-4 text-gray-500 text-sm">No results found</div>';
+                    suggestions.classList.remove("hidden");
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                suggestions.innerHTML = '<div class="p-4 text-red-500 text-sm">Search error. Please try again.</div>';
+                suggestions.classList.remove("hidden");
+            }
+        }, 300);
     });
-    
+
     document.addEventListener("click", (e) => {
         if (!e.target.closest(".relative")) suggestions.classList.add("hidden");
     });
@@ -388,18 +327,12 @@ function resetToOriginalState() {
 }
 
 async function init() {
-    console.log('Initializing Qonnect...');
+    console.log('Initializing Qonnect - using server-side search...');
     await loadFlaskData();
-    updateEmployeeMap();
-    
-    console.log('Data loaded:');
-    console.log('- Google employees:', googleEmployees.length);
-    console.log('- QT team:', coreTeam.length);
-    console.log('- Connections:', connectionData.length);
-    
+
     setupSearch();
     lucide.createIcons();
-    console.log('Initialization complete!');
+    console.log('Initialization complete! Ready for searches.');
 }
 
 document.addEventListener("DOMContentLoaded", init);
