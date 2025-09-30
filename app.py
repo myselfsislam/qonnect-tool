@@ -38,7 +38,7 @@ class APIRateLimiter:
         self.last_call_time = time.time()
 
 # Global rate limiter instance
-api_rate_limiter = APIRateLimiter(min_interval=0.1)  # 0.1 seconds between calls - much faster while respecting quotas
+api_rate_limiter = APIRateLimiter(min_interval=0.01)  # 0.01 seconds between calls - minimal delay while respecting quotas
 
 # Configure logging
 logging.basicConfig(level=logging.WARNING)
@@ -70,7 +70,12 @@ last_sync_time = None
 # Cached connections data to avoid quota issues
 cached_connections_data = None
 connections_cache_time = None
-connections_cache_ttl = 300  # 5 minutes cache TTL
+connections_cache_ttl = 1800  # 30 minutes cache TTL - much longer to avoid frequent API calls
+
+# Global cache for all sheet data to minimize API calls
+global_employees_cache = None
+global_employees_cache_time = None
+employees_cache_ttl = 1800  # 30 minutes cache for employees
 
 # Application startup optimization - preload data
 @lru_cache(maxsize=1)
@@ -624,10 +629,20 @@ processor = OptimizedGoogleSheetsProcessor(GOOGLE_SHEETS_CONFIG)
 def load_google_sheets_data_optimized():
     """Optimized data loading with proper organizational hierarchy building"""
     global employees_data, google_employees, core_team, processing_stats, last_sync_time
-    
+    global global_employees_cache, global_employees_cache_time
+
     try:
+        # Check if we have cached data that's still valid
+        current_time = time.time()
+        if (global_employees_cache is not None and
+            global_employees_cache_time is not None and
+            current_time - global_employees_cache_time < employees_cache_ttl):
+            logger.debug(f"📋 Using cached employee data ({len(global_employees_cache)} records)")
+            employees_data = global_employees_cache
+            return True
+
         logger.debug("Loading Google Sheets data with optimizations...")
-        
+
         employees, stats = processor.process_google_sheets_data_optimized()
         
         if not employees:
@@ -641,6 +656,10 @@ def load_google_sheets_data_optimized():
         employees_data = employees
         processing_stats = stats
         last_sync_time = datetime.now()
+
+        # Cache the data for future requests
+        global_employees_cache = employees
+        global_employees_cache_time = current_time
         
         # Build organizational relationships from manager data
         build_organizational_hierarchy()
@@ -2433,6 +2452,17 @@ def get_connection_stats():
     except Exception as e:
         logger.error(f"Error getting connection stats: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.before_first_request
+def startup_cache_warmup():
+    """Pre-warm the cache on application startup"""
+    try:
+        logger.debug("🔥 Warming up cache on startup...")
+        load_google_sheets_data_optimized()
+        get_cached_connections_data()
+        logger.debug("✅ Cache warmed up successfully")
+    except Exception as e:
+        logger.error(f"❌ Cache warmup failed: {e}")
 
 if __name__ == '__main__':
     # Get port from environment variable (Cloud Run) or use 8080 as default
