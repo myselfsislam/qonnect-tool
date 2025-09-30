@@ -65,6 +65,14 @@ employees_data = []
 google_employees = []
 core_team = []
 processing_stats = {}
+
+# Performance: Search index for faster lookups
+employee_search_index = {
+    'by_name': {},
+    'by_ldap': {},
+    'by_email': {},
+    'last_built': None
+}
 last_sync_time = None
 
 # Cached connections data to avoid quota issues
@@ -114,6 +122,49 @@ def get_sheet_data_bulk():
 def get_employee_by_ldap(ldap: str):
     """Cached employee lookup by LDAP"""
     return next((emp for emp in employees_data if emp.get('ldap') == ldap), None)
+
+def build_search_index():
+    """Build search index for faster employee lookups"""
+    global employee_search_index
+
+    logger.debug("Building search index...")
+    start_time = time.time()
+
+    # Clear existing index
+    employee_search_index['by_name'] = {}
+    employee_search_index['by_ldap'] = {}
+    employee_search_index['by_email'] = {}
+
+    for emp in employees_data:
+        ldap = emp.get('ldap', '').lower()
+        name = emp.get('name', '').lower()
+        email = emp.get('email', '').lower()
+
+        # Index by LDAP (exact match)
+        if ldap:
+            if ldap not in employee_search_index['by_ldap']:
+                employee_search_index['by_ldap'][ldap] = []
+            employee_search_index['by_ldap'][ldap].append(emp)
+
+        # Index by name tokens (for partial matching)
+        if name:
+            name_tokens = name.split()
+            for token in name_tokens:
+                if len(token) >= 2:  # Only index tokens with 2+ characters
+                    if token not in employee_search_index['by_name']:
+                        employee_search_index['by_name'][token] = []
+                    employee_search_index['by_name'][token].append(emp)
+
+        # Index by email prefix
+        if email:
+            email_prefix = email.split('@')[0].lower()
+            if email_prefix not in employee_search_index['by_email']:
+                employee_search_index['by_email'][email_prefix] = []
+            employee_search_index['by_email'][email_prefix].append(emp)
+
+    employee_search_index['last_built'] = datetime.now()
+    elapsed = time.time() - start_time
+    logger.debug(f"Search index built in {elapsed:.2f}s")
 
 def get_cached_connections_data():
     """Get cached connections data to avoid Google Sheets API quota issues"""
@@ -664,7 +715,10 @@ def load_google_sheets_data_optimized():
         # Cache the data for future requests
         global_employees_cache = employees
         global_employees_cache_time = current_time
-        
+
+        # Build search index for performance
+        build_search_index()
+
         # Build organizational relationships from manager data
         build_organizational_hierarchy()
         
@@ -923,7 +977,7 @@ def sync_sharepoint():
 
 @app.route('/api/search-employees')
 def search_employees():
-    """FIXED: Employee search that finds actual employees, not their reportees"""
+    """OPTIMIZED: Employee search using search index for faster lookups"""
     # Auto-load data if not loaded yet
     if not employees_data:
         logger.debug("Data not loaded, loading now...")
@@ -935,60 +989,77 @@ def search_employees():
         return jsonify([])
 
     try:
-        filtered = []
         max_results = 25
-        seen_employees = set()  # Track unique employees by LDAP to avoid duplicates
+        candidates = set()  # Use set to avoid duplicates
 
-        # Temporary check for epersitz
-        epersitz_found_in_employees_data = any(emp.get('ldap') == 'epersitz' for emp in employees_data)
-        logger.debug(f"DEBUG: 'epersitz' found in employees_data: {epersitz_found_in_employees_data}")
+        # Use search index for faster lookups
+        if employee_search_index['last_built']:
+            # Try exact LDAP match first
+            if query in employee_search_index['by_ldap']:
+                candidates.update([emp['ldap'] for emp in employee_search_index['by_ldap'][query]])
 
-        for emp in employees_data:
-            if len(filtered) >= max_results:
-                break
+            # Try email prefix match
+            if query in employee_search_index['by_email']:
+                candidates.update([emp['ldap'] for emp in employee_search_index['by_email'][query]])
 
-            # Skip duplicate employees (same LDAP)
-            employee_ldap = emp.get('ldap', '').lower().strip()
-            if not employee_ldap or employee_ldap in seen_employees:
+            # Try name token matches
+            for token in query.split():
+                if len(token) >= 2:
+                    # Partial match on token
+                    for index_token, emps in employee_search_index['by_name'].items():
+                        if token in index_token:
+                            candidates.update([emp['ldap'] for emp in emps])
+                            if len(candidates) >= max_results * 3:  # Get enough candidates
+                                break
+
+        # If index search didn't yield results, fall back to full scan
+        if not candidates:
+            for emp in employees_data[:500]:  # Limit fallback scan
+                name = emp.get('name', '').lower()
+                email = emp.get('email', '').lower()
+                ldap = emp.get('ldap', '').lower()
+
+                if (query in name or query in email or query in ldap or
+                    query in emp.get('department', '').lower() or
+                    query in emp.get('designation', '').lower()):
+                    candidates.add(ldap)
+
+        # Now score and filter the candidates
+        filtered = []
+        seen_employees = set()
+
+        for ldap in candidates:
+            emp = get_employee_by_ldap(ldap)
+            if not emp or ldap in seen_employees:
                 continue
 
+            seen_employees.add(ldap)
             score = 0
-            
-            # FIXED: Search the employee's own details, NOT manager relationships
+
+            # Calculate relevance score
             name = emp.get('name', '').lower()
-            logger.debug(f"Search: Employee Name: '{name}', Query in Name: {query in name}")
+            email = emp.get('email', '').lower()
+            emp_ldap = emp.get('ldap', '').lower()
+
+            if query == emp_ldap:  # Exact LDAP match
+                score += 20
+            elif query in emp_ldap:
+                score += 10
+
             if query in name:
                 score += 10
                 if name.startswith(query):
                     score += 5
-            
-            email = emp.get('email', '').lower()
-            logger.debug(f"Search: Employee Email: '{email}', Query in Email: {query in email}")
+
             if query in email:
                 score += 8
-                if email.startswith(query):
-                    score += 3
-            
-            ldap = emp.get('ldap', '').lower()
-            logger.debug(f"Search: Employee LDAP: '{ldap}', Query in LDAP: {query in ldap}")
-            if query in ldap:
-                score += 7
-                if ldap.startswith(query):
-                    score += 3
-            
-            logger.debug(f"Search: Employee '{emp.get('name')}' final score: {score}")
 
-            if score == 0:
-                # Check other fields only if no name/email/ldap match
-                if query in emp.get('department', '').lower():
-                    score += 4
-                elif query in emp.get('designation', '').lower():
-                    score += 3
-            
+            if query in emp.get('department', '').lower():
+                score += 4
+            elif query in emp.get('designation', '').lower():
+                score += 3
+
             if score > 0:
-                # Mark this employee as seen
-                seen_employees.add(employee_ldap)
-
                 emp_copy = {
                     'ldap': emp['ldap'],
                     'name': emp['name'],
@@ -1001,21 +1072,16 @@ def search_employees():
                     'manager': emp.get('manager', ''),
                     'location': emp.get('location', ''),
                     '_search_score': score,
-                    # Lazy loading - hierarchy and connections loaded on-demand via API calls
-                    'reportees_count': 0,  # Will be loaded when needed
-                    'manager_chain_length': 0,  # Will be loaded when needed
-                    'has_reportees': False,  # Will be loaded when needed
-                    'declared_connections': []  # Will be loaded when user clicks on employee
+                    'declared_connections': []
                 }
-
                 filtered.append(emp_copy)
-        
+
+            if len(filtered) >= max_results:
+                break
+
         # Sort by score first, then alphabetically by name
-        filtered.sort(key=lambda x: (
-            x['_search_score'],
-            x['name'].lower()
-        ), reverse=True)
-        return jsonify(filtered)
+        filtered.sort(key=lambda x: (-x['_search_score'], x['name'].lower()))
+        return jsonify(filtered[:max_results])
 
     except Exception as e:
         logger.error(f"Search error: {e}")
