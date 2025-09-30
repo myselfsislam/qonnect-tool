@@ -1656,6 +1656,8 @@ def get_connections_data(employee_ldap):
 
                     declared_connections.append({
                         'qtLdap': qt_ldap,
+                        'qtName': rec.get('QT Employee Name'),
+                        'qtEmail': rec.get('QT Employee Email'),
                         'connectionStrength': rec.get('Connection Strength', '').lower(),
                         'declaredBy': rec.get('Declared By'),
                         'timestamp': rec.get('Timestamp'),
