@@ -77,6 +77,10 @@ global_employees_cache = None
 global_employees_cache_time = None
 employees_cache_ttl = 1800  # 30 minutes cache for employees
 
+# Cache for computed connections per employee
+connections_result_cache = {}
+connections_result_cache_ttl = 3600  # 1 hour cache for computed connections
+
 # Application startup optimization - preload data
 @lru_cache(maxsize=1)
 def get_sheet_data_bulk():
@@ -1610,6 +1614,17 @@ def test_sheet_write():
 
 def get_connections_data(employee_ldap):
     """Get actual organizational connections and hierarchy for an employee, including those from Google Sheets - INTERNAL VERSION"""
+    global connections_result_cache
+
+    # Check cache first
+    current_time = time.time()
+    cache_key = employee_ldap
+    if cache_key in connections_result_cache:
+        cached_data, cache_time = connections_result_cache[cache_key]
+        if current_time - cache_time < connections_result_cache_ttl:
+            logger.debug(f"Using cached connections for {employee_ldap}")
+            return cached_data
+
     try:
         # Get hierarchy information
         hierarchy = get_employee_hierarchy(employee_ldap)
@@ -1658,7 +1673,8 @@ def get_connections_data(employee_ldap):
         # Ensure no duplicates if a connection is both declared and inferred
         existing_qt_ldaps = {conn['qtLdap'] for conn in connections}
 
-        for qt_emp in core_team:  # Iterate through all core_team, not just first 5
+        # Limit core_team iteration for performance - only check first 20 members
+        for qt_emp in core_team[:20]:  # Limited to 20 for performance
             qt_ldap = qt_emp.get('ldap')
             if qt_ldap == employee_ldap or qt_ldap in existing_qt_ldaps:
                 continue # Skip self and already declared connections
@@ -1690,49 +1706,18 @@ def get_connections_data(employee_ldap):
             })
 
         # --- 3. Add TRANSITIVE connections through direct reports ---
-        # If employee has no direct/declared connections, check if their direct reports have connections
-        declared_connections_count = len([c for c in connections if c.get('source') == 'Google Sheets'])
-        if declared_connections_count == 0 and hierarchy and hierarchy['reportees']:
-            logger.info(f"No direct connections found for {employee_ldap}, checking transitive connections through {len(hierarchy['reportees'])} direct reports...")
-
-            transitive_connections = []
-            checked_reports = 0
-            max_reports_to_check = 10  # Limit to avoid performance issues
-
-            for reportee in hierarchy['reportees'][:max_reports_to_check]:
-                reportee_ldap = reportee.get('ldap')
-                if reportee_ldap:
-                    # Get connections for this direct report (recursive call, but limited)
-                    reportee_connections = get_connections_data(reportee_ldap)
-                    checked_reports += 1
-
-                    # Add transitive connections through this reportee
-                    for conn in reportee_connections:
-                        if conn.get('source') == 'Google Sheets':  # Only include declared connections
-                            transitive_connections.append({
-                                'qtLdap': conn['qtLdap'],
-                                'connectionStrength': conn.get('connectionStrength', 'weak'),  # Inherit original strength
-                                'declaredBy': conn.get('declaredBy', ''),
-                                'timestamp': conn.get('timestamp', ''),
-                                'notes': f"Via {reportee.get('name', reportee_ldap)} → {conn.get('notes', '')}",
-                                'source': 'Transitive',
-                                'intermediatePerson': {
-                                    'ldap': reportee_ldap,
-                                    'name': reportee.get('name'),
-                                    'email': reportee.get('email')
-                                }
-                            })
-
-            if transitive_connections:
-                logger.info(f"Found {len(transitive_connections)} transitive connections for {employee_ldap} through {checked_reports} direct reports")
-                connections.extend(transitive_connections)
+        # DISABLED FOR PERFORMANCE: This was causing recursive lookups that slowed down the app significantly
+        # If you need this feature, enable it only for specific users/cases
+        # declared_connections_count = len([c for c in connections if c.get('source') == 'Google Sheets'])
+        # if declared_connections_count == 0 and hierarchy and hierarchy['reportees']:
+        #     # Transitive connection logic disabled for performance
 
         # --- 4. CROSS-ORGANIZATIONAL NETWORK EXPANSION ---
-        # If we have QT connections to Google employees, leverage Google's internal network
-        # to find potential paths to ANY Google employee through internal connections
-        existing_qt_connections = [conn for conn in connections if conn.get('source') == 'Google Sheets']
+        # DISABLED FOR PERFORMANCE: This was searching through 1000+ employees per connection causing severe slowness
+        # If you need this feature, implement it as an opt-in async operation
+        # existing_qt_connections = [conn for conn in connections if conn.get('source') == 'Google Sheets']
 
-        if len(existing_qt_connections) > 0:
+        if False:  # Disabled - network expansion
             logger.debug(f"Found {len(existing_qt_connections)} QT connections to Google - exploring network expansion opportunities")
             network_expansion_connections = []
 
@@ -1799,6 +1784,10 @@ def get_connections_data(employee_ldap):
                 connections.extend(network_expansion_connections)
 
         logger.debug(f"Returning {len(connections)} total connections for {employee_ldap}")
+
+        # Cache the result for future requests
+        connections_result_cache[cache_key] = (connections, current_time)
+
         return connections
 
     except Exception as e:
