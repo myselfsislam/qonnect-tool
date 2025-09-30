@@ -38,7 +38,7 @@ class APIRateLimiter:
         self.last_call_time = time.time()
 
 # Global rate limiter instance
-api_rate_limiter = APIRateLimiter(min_interval=2.0)  # 2 seconds between calls for quota safety
+api_rate_limiter = APIRateLimiter(min_interval=0.1)  # 0.1 seconds between calls - much faster while respecting quotas
 
 # Configure logging
 logging.basicConfig(level=logging.WARNING)
@@ -71,6 +71,35 @@ last_sync_time = None
 cached_connections_data = None
 connections_cache_time = None
 connections_cache_ttl = 300  # 5 minutes cache TTL
+
+# Application startup optimization - preload data
+@lru_cache(maxsize=1)
+def get_sheet_data_bulk():
+    """Load all sheet data in one batch to minimize API calls"""
+    try:
+        api_rate_limiter.wait_if_needed()
+
+        # Get all sheets data in minimal API calls
+        sheet_writer = GoogleSheetsConnector()
+        if not sheet_writer.authenticate():
+            return None, None
+
+        # Load employee data
+        employees_sheet = sheet_writer.connector.spreadsheet.get_worksheet(0)
+        api_rate_limiter.wait_if_needed()
+        employees_data = employees_sheet.get_all_records()
+
+        # Load connections data
+        connections_sheet = sheet_writer.get_or_create_connections_sheet()
+        api_rate_limiter.wait_if_needed()
+        connections_data = connections_sheet.get_all_records()
+
+        logger.debug(f"🚀 Bulk loaded {len(employees_data)} employees, {len(connections_data)} connections")
+        return employees_data, connections_data
+
+    except Exception as e:
+        logger.error(f"❌ Bulk data load failed: {e}")
+        return None, None
 
 @lru_cache(maxsize=1000)
 def get_employee_by_ldap(ldap: str):

@@ -2,10 +2,13 @@ services:
   - type: web
     name: qonnect-tool
     env: python
+    plan: free  # Use free tier but optimize for performance
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 app:app
     envVars:
       - key: PORT
         value: 10000
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false  # Set this as a secret in Render dashboard
+      - key: PYTHONUNBUFFERED
+        value: 1
