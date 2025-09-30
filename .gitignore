@@ -2,15 +2,40 @@
 credentials.json
 *.key
 *.pem
+service-account-*.json
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
 # Environment
 .env
 .env.local
+.env.production
+.env.staging
 
 # OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
