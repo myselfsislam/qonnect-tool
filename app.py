@@ -2453,7 +2453,6 @@ def get_connection_stats():
         logger.error(f"Error getting connection stats: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.before_first_request
 def startup_cache_warmup():
     """Pre-warm the cache on application startup"""
     try:
@@ -2468,5 +2467,8 @@ if __name__ == '__main__':
     # Get port from environment variable (Cloud Run) or use 8080 as default
     port = int(os.environ.get('PORT', 8080))
     print(f"🚀 Qonnect - Starting on port {port}")
+
+    # Warm up cache on startup
+    startup_cache_warmup()
 
     app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
