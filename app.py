@@ -2406,6 +2406,8 @@ def get_connection_stats():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("🚀 Qonnect - Starting on http://localhost:8080")
-    
-    app.run(debug=True, port=8080, threaded=True)
+    # Get port from environment variable (Cloud Run) or use 8080 as default
+    port = int(os.environ.get('PORT', 8080))
+    print(f"🚀 Qonnect - Starting on port {port}")
+
+    app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
