@@ -29,9 +29,9 @@
         }
 
         .google-card {
-            border: 1px solid transparent;
-            background: linear-gradient(white, white) padding-box,
-                        linear-gradient(45deg, #4285f4, #ea4335, #fbbc05, #34a853) border-box;
+            border: 3px solid transparent;
+            border-image-slice: 1;
+            border-image-source: linear-gradient(90deg, #4285f4, #db4437, #f4b400, #0f9d58);
         }
 
         .qt-card {
@@ -84,6 +84,139 @@
 
         .steps-badge-hidden {
             display: none !important;
+        }
+
+        /* Tree styles */
+        .tree-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow-x: auto;
+            padding: 2rem;
+        }
+        .tree-node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        .tree-node > .employee-card {
+            margin: 0 1rem;
+        }
+        .tree-children {
+            display: flex;
+            justify-content: center;
+            position: relative;
+            padding-top: 2rem;
+        }
+        .tree-children::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            height: 1rem;
+            background-color: #cbd5e1;
+        }
+        .tree-node .tree-children .tree-node {
+            padding: 0 1rem;
+        }
+        .tree-node > .tree-children > .tree-node::before {
+            content: "";
+            position: absolute;
+            top: -1rem;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #cbd5e1;
+        }
+        .tree-node > .tree-children > .tree-node::after {
+            content: "";
+            position: absolute;
+            top: -1rem;
+            left: 50%;
+            width: 2px;
+            height: 1rem;
+            background-color: #cbd5e1;
+        }
+        .tree-node > .tree-children > .tree-node:first-child::before {
+            left: 50%;
+            width: 50%;
+        }
+        .tree-node > .tree-children > .tree-node:last-child::before {
+            right: 50%;
+            width: 50%;
+        }
+        .tree-node > .tree-children > .tree-node:only-child::before {
+            display: none;
+        }
+
+        .connection-btn {
+            position: relative;
+            border-radius: 50%;
+            height: 2.5rem;
+            width: 2.5rem;
+            padding: 0;
+            background-color: rgb(254 249 195);
+            border: 1px solid rgb(250 204 21);
+            color: rgb(161 98 7);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            pointer-events: auto;
+            user-select: none;
+        }
+
+        .connection-btn:hover {
+            background-color: rgb(254 240 138);
+        }
+
+        .connection-btn:active {
+            transform: scale(0.95);
+        }
+
+        .connection-count {
+            position: absolute;
+            top: -0.25rem;
+            right: -0.25rem;
+            background-color: rgb(161 98 7);
+            color: white;
+            font-size: 0.75rem;
+            border-radius: 50%;
+            height: 1.25rem;
+            width: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .unified-card {
+            background-color: white;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            transition: all 0.3s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+            min-height: 200px;
+            max-height: 200px;
+            width: 200px;
+            justify-content: center;
+        }
+
+        .unified-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px -1px rgb(0 0 0 / 0.1);
+        }
+
+        .google-border {
+            border: 3px solid transparent;
+            border-image-slice: 1;
+            border-image-source: linear-gradient(90deg, #4285f4, #db4437, #f4b400, #0f9d58);
+        }
+
+        .qt-border {
+            border: 3px solid #5748c3;
         }
     </style>
 </head>
@@ -279,7 +412,7 @@
                     ...conn,
                     connectionType: 'indirect',
                     priority: 2,
-                    throughManager: conn.intermediatePerson?.name || 'Indirect Connection'
+                    throughManager: conn.intermediatePerson || conn.throughManager || 'Indirect Connection'
                     // pathLength is now provided by backend
                 }));
             } else {
@@ -329,14 +462,15 @@
                 for (const conn of employee.declared_connections) {
 
                     // Calculate pathLength for indirect connections that don't have it
-                    if (conn.throughManager && conn.pathLength === undefined) {
+                    const bridgePersonName = conn.intermediatePerson || conn.throughManager;
+                    if (bridgePersonName && conn.pathLength === undefined) {
 
-                        // Find the bridge person (throughManager) in Google employees (with caching)
+                        // Find the bridge person in Google employees (with caching)
                         try {
-                            const bridgeResults = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(conn.throughManager)}`);
+                            const bridgeResults = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(bridgePersonName)}`);
                             const bridgePerson = bridgeResults.find(emp =>
-                                emp.name.toLowerCase().includes(conn.throughManager.toLowerCase()) ||
-                                emp.ldap.toLowerCase().includes(conn.throughManager.toLowerCase())
+                                emp.name.toLowerCase().includes(bridgePersonName.toLowerCase()) ||
+                                emp.ldap.toLowerCase().includes(bridgePersonName.toLowerCase())
                             );
 
                             if (bridgePerson) {
@@ -456,32 +590,69 @@
                         card.appendChild(strengthBadge);
                     }
 
-                    // Add a subtle indicator if connection is through manager
-                    if (conn.throughManager) {
+                    // Add a subtle indicator if connection is through manager or intermediate person
+                    const bridgePerson = conn.intermediatePerson || conn.throughManager;
+                    if (bridgePerson) {
                         const managerIndicator = document.createElement("div");
                         managerIndicator.className = "text-xs text-blue-700 mt-2 bg-white border border-blue-200 px-2 py-1 rounded-full";
-                        managerIndicator.textContent = `Via ${conn.throughManager}`;
+                        managerIndicator.textContent = `Via ${bridgePerson}`;
                         card.appendChild(managerIndicator);
                     }
 
-                    // Add circular step count badge ONLY for indirect connections (those with throughManager)
-                    if (conn.throughManager) {
-                        const stepsBadge = document.createElement("div");
-                        stepsBadge.className = "absolute top-3 left-3 w-6 h-6 rounded-full bg-white border-2 border-gray-300 flex items-center justify-center text-xs font-bold text-black";
+                    // Add circular step count badge ONLY for indirect connections (those with bridgePerson)
+                    if (bridgePerson) {
+                        // Ensure qtEmployee has all necessary fields
+                        const fullQtEmployee = {
+                            ldap: conn.qtLdap,
+                            name: conn.qtName || qtEmployee.name,
+                            email: conn.qtEmail || qtEmployee.email,
+                            designation: qtEmployee.designation,
+                            organisation: qtEmployee.organisation,
+                            company: qtEmployee.company,
+                            avatar: qtEmployee.avatar
+                        };
+
+                        const stepsBadge = document.createElement("button");
+                        stepsBadge.type = "button";
+                        stepsBadge.className = "btn connection-btn absolute top-3 left-3";
+                        stepsBadge.style.zIndex = "10"; // Ensure it's clickable
                         const displayLength = conn.pathLength !== undefined ? conn.pathLength : '?';
-                        stepsBadge.textContent = displayLength;
+                        stepsBadge.innerHTML = `
+                            <i data-lucide="users" class="w-4 h-4"></i>
+                            <span class="connection-count">${displayLength}</span>
+                        `;
 
                         // Create appropriate tooltip based on path length
                         let tooltipText;
                         if (conn.pathLength === 0) {
-                            tooltipText = "Direct peer connection";
+                            tooltipText = "Direct connection - Click to view path";
                         } else {
-                            tooltipText = `${conn.pathLength} intermediate ${conn.pathLength === 1 ? 'employee' : 'employees'} to reach`;
+                            tooltipText = `Shortest Path Found (${displayLength} ${displayLength === 1 ? 'step' : 'steps'}) - Click to expand`;
                         }
                         stepsBadge.title = tooltipText;
 
+                        // Add click handler to show expanded hierarchy (multiple methods for compatibility)
+                        const clickHandler = function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('Badge clicked!', { employee, qtEmployee: fullQtEmployee, conn });
+                            showExpandedHierarchy(employee, fullQtEmployee, conn);
+                        };
+
+                        // Add multiple event listeners for maximum compatibility
+                        stepsBadge.addEventListener('click', clickHandler, true);
+                        stepsBadge.addEventListener('mousedown', clickHandler, true);
+                        stepsBadge.onclick = clickHandler;
+
                         card.style.position = "relative";
                         card.appendChild(stepsBadge);
+
+                        // Re-initialize lucide icons for the newly added icon
+                        setTimeout(() => {
+                            if (typeof lucide !== 'undefined') {
+                                lucide.createIcons();
+                            }
+                        }, 0);
                     }
 
                     qtConnectionsGrid.appendChild(card);
@@ -1180,6 +1351,180 @@
             return card;
         }
 
+
+        async function showExpandedHierarchy(googleEmployee, qtEmployee, connection) {
+            /**
+             * Show the expanded tree view - mimicking the reference code approach
+             */
+            console.log('showExpandedHierarchy called with:', { googleEmployee, qtEmployee, connection });
+
+            try {
+                const mainContent = document.getElementById('mainContent');
+                if (!mainContent) {
+                    console.error('mainContent element not found!');
+                    return;
+                }
+
+                // Store state for back navigation
+                window.currentExpandedState = { googleEmployee, qtEmployee, connection };
+
+                // Clear current content
+                mainContent.innerHTML = '';
+
+                // Create content container
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'space-y-6 bg-gray-50 min-h-screen p-8';
+
+            // Back button
+            contentDiv.innerHTML = `
+                <div class="flex justify-center">
+                    <button id="backBtn" class="bg-white border border-gray-300 text-gray-700 text-sm font-semibold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-gray-50">
+                        <i data-lucide="arrow-left" class="w-4 h-4"></i>Back to Connections View
+                    </button>
+                </div>
+                <div class="text-center">
+                    <h2 class="text-xl font-bold">Connection Path</h2>
+                    <p class="text-gray-500 mt-1">From ${googleEmployee.name} to ${qtEmployee.name || qtEmployee.ldap} (via ${connection.intermediatePerson || 'connection'})</p>
+                </div>
+            `;
+
+            // Build tree container
+            const treeContainer = document.createElement('div');
+            treeContainer.className = 'tree-container';
+
+            try {
+                // Get the organizational path
+                const pathEmployees = await buildOrganizationalPath(googleEmployee, connection);
+
+                // Build the tree structure
+                const tree = await buildTreeStructure(qtEmployee, pathEmployees, connection);
+                treeContainer.appendChild(tree);
+
+            } catch (error) {
+                console.error('Error building tree:', error);
+                treeContainer.innerHTML = '<div class="text-center text-gray-500 py-8">Error loading connection path</div>';
+            }
+
+            contentDiv.appendChild(treeContainer);
+            mainContent.appendChild(contentDiv);
+
+                // Back button handler
+                const backBtn = document.getElementById('backBtn');
+                if (backBtn) {
+                    backBtn.addEventListener('click', async () => {
+                        // Re-render the search results
+                        const pathContent = await renderConnectionPaths(googleEmployee);
+                        mainContent.innerHTML = "";
+                        mainContent.appendChild(pathContent);
+                        lucide.createIcons();
+                    });
+                }
+
+                lucide.createIcons();
+
+            } catch (error) {
+                console.error('Error in showExpandedHierarchy:', error);
+                alert('Error showing expanded view. Check console for details.');
+            }
+        }
+
+        async function buildOrganizationalPath(googleEmployee, connection) {
+            /**
+             * Use the backend API to get the actual organizational path between employees
+             */
+            const bridgeLdap = connection.intermediateLdap;
+
+            if (!bridgeLdap) {
+                return [googleEmployee];
+            }
+
+            try {
+                // Use the new organizational path API endpoint
+                const response = await cachedFetch(`/api/organizational-path/${googleEmployee.ldap}/${bridgeLdap}`);
+
+                console.log('Organizational path response:', {
+                    from: googleEmployee.name,
+                    to: bridgeLdap,
+                    pathLength: response.path?.length || 0,
+                    intermediateCount: response.intermediateCount
+                });
+
+                if (response.path && response.path.length > 0) {
+                    return response.path;
+                }
+
+                // Fallback: if API fails, return just the employees
+                return [googleEmployee];
+            } catch (error) {
+                console.error('Error fetching organizational path:', error);
+                return [googleEmployee];
+            }
+        }
+
+        async function buildTreeStructure(qtEmployee, pathEmployees, connection) {
+            /**
+             * Build the tree HTML structure matching the reference code's approach
+             */
+            // Create node map
+            const nodeMap = new Map();
+            const directConnectionLdap = connection.intermediateLdap || pathEmployees[pathEmployees.length - 1]?.ldap;
+
+            // Create nodes for each employee in path
+            pathEmployees.forEach(emp => {
+                nodeMap.set(emp.ldap, {
+                    employee: emp,
+                    children: []
+                });
+            });
+
+            // Build relationships (parent-child)
+            for (let i = 0; i < pathEmployees.length - 1; i++) {
+                const current = pathEmployees[i];
+                const next = pathEmployees[i + 1];
+
+                // Next is the manager of current
+                if (nodeMap.has(next.ldap)) {
+                    nodeMap.get(next.ldap).children.push(nodeMap.get(current.ldap));
+                }
+            }
+
+            // Find root (the highest manager in our path)
+            let rootNode = nodeMap.get(pathEmployees[pathEmployees.length - 1].ldap);
+
+            // Build tree HTML
+            function buildTreeHtml(node) {
+                const nodeEl = document.createElement('div');
+                nodeEl.className = 'tree-node';
+
+                // Create employee card with google-border class
+                const card = document.createElement('div');
+                card.className = 'unified-card google-border';
+                card.innerHTML = `
+                    <div class="flex-1 flex flex-col items-center text-center justify-center">
+                        <img src="${node.employee.avatar || 'https://via.placeholder.com/150'}" alt="${node.employee.name}" class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 truncate w-full">${node.employee.organisation || node.employee.company || 'Google'}</p>
+                        <h4 class="font-bold text-sm text-gray-800 truncate w-full" title="${node.employee.name}">${node.employee.name}</h4>
+                        <p class="text-xs text-gray-500 truncate w-full" title="${node.employee.designation || ''}">${node.employee.designation || ''}</p>
+                        <p class="text-[10px] text-gray-400 mt-1 font-mono truncate w-full">${node.employee.ldap}</p>
+                    </div>
+                `;
+                nodeEl.appendChild(card);
+
+                // Add children if any
+                if (node.children.length > 0) {
+                    const childrenEl = document.createElement('div');
+                    childrenEl.className = 'tree-children';
+                    node.children.forEach(child => {
+                        childrenEl.appendChild(buildTreeHtml(child));
+                    });
+                    nodeEl.appendChild(childrenEl);
+                }
+
+                return nodeEl;
+            }
+
+            return buildTreeHtml(rootNode);
+        }
 
         async function init() {
             await loadFlaskData();

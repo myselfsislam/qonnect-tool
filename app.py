@@ -120,8 +120,9 @@ def get_sheet_data_bulk():
 
 @lru_cache(maxsize=1000)
 def get_employee_by_ldap(ldap: str):
-    """Cached employee lookup by LDAP"""
-    return next((emp for emp in employees_data if emp.get('ldap') == ldap), None)
+    """Cached employee lookup by LDAP (case-insensitive)"""
+    ldap_lower = ldap.lower() if ldap else ''
+    return next((emp for emp in employees_data if emp.get('ldap', '').lower() == ldap_lower), None)
 
 def build_search_index():
     """Build search index for faster employee lookups"""
@@ -211,6 +212,149 @@ def invalidate_connections_cache():
     global cached_connections_data, connections_cache_time
     cached_connections_data = None
     connections_cache_time = None
+
+def calculate_actual_organizational_path(from_employee_ldap, to_employee_ldap):
+    """
+    Calculate the actual number of intermediate employees between two employees in the org chart.
+    Returns the count of intermediate employees (not including the from and to employees).
+    """
+    try:
+        from_emp = get_employee_by_ldap(from_employee_ldap)
+        to_emp = get_employee_by_ldap(to_employee_ldap)
+
+        if not from_emp or not to_emp:
+            logger.debug(f"    Path calc: Employee not found (from: {from_employee_ldap}, to: {to_employee_ldap})")
+            return 1  # Default if employees not found
+
+        from_name = from_emp.get('name', from_employee_ldap)
+        to_name = to_emp.get('name', to_employee_ldap)
+
+        # Build manager chains for both employees
+        from_chain = []  # List of ldaps going up from from_emp
+        to_chain = []    # List of ldaps going up to_emp
+
+        # Build from_emp's manager chain (including placeholder managers)
+        current = from_emp
+        visited = set()
+        max_depth = 20
+        depth = 0
+        while current and depth < max_depth:
+            depth += 1
+            manager_ldap = None
+
+            # Try manager_info first
+            if current.get('manager_info'):
+                manager_ldap = current['manager_info']['ldap']
+            # Fall back to manager field
+            elif current.get('manager'):
+                manager_email = current['manager']
+                manager_ldap = manager_email.split('@')[0] if '@' in manager_email else manager_email
+
+            if not manager_ldap or manager_ldap in visited:
+                break
+
+            visited.add(manager_ldap)
+            from_chain.append(manager_ldap)
+            current = get_employee_by_ldap(manager_ldap)
+            # Continue even if employee not found (to count placeholder managers)
+
+        # Build to_emp's manager chain (including placeholder managers)
+        current = to_emp
+        visited = set()
+        depth = 0
+        while current and depth < max_depth:
+            depth += 1
+            manager_ldap = None
+
+            # Try manager_info first
+            if current.get('manager_info'):
+                manager_ldap = current['manager_info']['ldap']
+            # Fall back to manager field
+            elif current.get('manager'):
+                manager_email = current['manager']
+                manager_ldap = manager_email.split('@')[0] if '@' in manager_email else manager_email
+
+            if not manager_ldap or manager_ldap in visited:
+                break
+
+            visited.add(manager_ldap)
+            to_chain.append(manager_ldap)
+            current = get_employee_by_ldap(manager_ldap)
+            # Continue even if employee not found (to count placeholder managers)
+
+        logger.debug(f"    Path calc: {from_name} chain length: {len(from_chain)}, {to_name} chain length: {len(to_chain)}")
+
+        # Check if they're the same person
+        if from_employee_ldap.lower() == to_employee_ldap.lower():
+            logger.debug(f"    Path calc: Same person → 0 intermediates")
+            return 0
+
+        # Check if to_emp is from_emp's direct manager
+        if from_chain and from_chain[0].lower() == to_employee_ldap.lower():
+            # Path: from_emp -> to_emp (2 people total)
+            # Excluding from_emp: 1 (just to_emp)
+            logger.debug(f"    Path calc: {to_name} is direct manager of {from_name} → 1 person (excluding searched)")
+            return 1
+
+        # Check if from_emp is to_emp's direct manager
+        if to_chain and to_chain[0].lower() == from_employee_ldap.lower():
+            # Path: from_emp -> to_emp (2 people total)
+            # Excluding from_emp: 1 (just to_emp)
+            logger.debug(f"    Path calc: {from_name} is direct manager of {to_name} → 1 person (excluding searched)")
+            return 1
+
+        # Check if they share the same direct manager (peers/siblings)
+        if from_chain and to_chain and from_chain[0].lower() == to_chain[0].lower():
+            # Path: from_emp -> shared_manager -> to_emp (3 people total)
+            # Excluding from_emp: 2 (shared_manager + to_emp)
+            shared_mgr = get_employee_by_ldap(from_chain[0])
+            logger.debug(f"    Path calc: Peers under {shared_mgr.get('name') if shared_mgr else from_chain[0]} → 2 people (excluding searched)")
+            return 2
+
+        # Check if to_emp is somewhere in from_emp's manager chain
+        if to_employee_ldap.lower() in [m.lower() for m in from_chain]:
+            position = [m.lower() for m in from_chain].index(to_employee_ldap.lower())
+            # Path: from_emp -> manager1 -> ... -> to_emp
+            # Total people: position + 2 (from_emp + position+1 managers including to_emp)
+            # Excluding from_emp: position + 1
+            count = position + 1
+            logger.debug(f"    Path calc: {to_name} is at position {position} in {from_name}'s manager chain → {count} people (excluding searched)")
+            return count
+
+        # Check if from_emp is somewhere in to_emp's manager chain
+        if from_employee_ldap.lower() in [m.lower() for m in to_chain]:
+            position = [m.lower() for m in to_chain].index(from_employee_ldap.lower())
+            # Path: from_emp -> managers down -> to_emp
+            # Total people: position + 2
+            # Excluding from_emp: position + 1
+            count = position + 1
+            logger.debug(f"    Path calc: {from_name} is at position {position} in {to_name}'s manager chain → {count} people (excluding searched)")
+            return count
+
+        # Find the lowest common manager (shared manager in the hierarchy)
+        for i, from_manager in enumerate(from_chain):
+            for j, to_manager in enumerate(to_chain):
+                if from_manager.lower() == to_manager.lower():
+                    # Path: from_emp -> i managers -> common_mgr -> j managers -> to_emp
+                    # Total: 1 + i + 1 + j + 1 = i + j + 3
+                    # Excluding from_emp: i + j + 2
+                    shared_mgr = get_employee_by_ldap(from_manager)
+                    shared_name = shared_mgr.get('name') if shared_mgr else from_manager
+                    count = i + j + 2
+                    logger.debug(f"    Path calc: Shared manager {shared_name} at positions ({i}, {j}) → {count} people (excluding searched)")
+                    return count
+
+        # No common manager found - they're in different hierarchies
+        # Path: from_emp -> all from_chain -> all to_chain -> to_emp
+        # Total: 1 + len(from_chain) + len(to_chain) + 1
+        # Excluding from_emp: len(from_chain) + len(to_chain) + 1
+        estimate = len(from_chain) + len(to_chain) + 1
+        logger.debug(f"    Path calc: No common manager found → estimate {estimate} people (excluding searched)")
+        return estimate
+
+    except Exception as e:
+        logger.warning(f"Error calculating organizational path: {e}")
+        return 1
 
 def calculate_path_length_to_qt_employee(google_ldap, qt_ldap, hierarchy, connection_strength=None):
     """Calculate the number of intermediate employees to traverse from Google employee to QT employee"""
@@ -1242,10 +1386,10 @@ def get_employee_hierarchy_api(employee_ldap):
     """Get organizational hierarchy for an employee (manager chain + reportees)"""
     try:
         hierarchy = get_employee_hierarchy(employee_ldap)
-        
+
         if not hierarchy:
             return jsonify({'error': 'Employee not found'}), 404
-        
+
         return jsonify({
             'employee': hierarchy['employee'],
             'manager_chain': hierarchy['manager_chain'],
@@ -1254,10 +1398,160 @@ def get_employee_hierarchy_api(employee_ldap):
             'total_reports': len(hierarchy['reportees']),
             'hierarchy_depth': len(hierarchy['manager_chain'])
         })
-        
+
     except Exception as e:
         logger.error(f"Hierarchy API error for {employee_ldap}: {e}")
         return jsonify({'error': 'Failed to get hierarchy'}), 500
+
+@app.route('/api/organizational-path/<from_ldap>/<to_ldap>')
+def get_organizational_path_api(from_ldap, to_ldap):
+    """Get the actual organizational path between two employees"""
+    try:
+        from_emp = get_employee_by_ldap(from_ldap)
+        to_emp = get_employee_by_ldap(to_ldap)
+
+        if not from_emp or not to_emp:
+            return jsonify({'error': 'Employee not found'}), 404
+
+        # Build manager chains for both employees using manager_info
+        from_chain = []
+        to_chain = []
+
+        # Build from_emp's manager chain
+        current = from_emp
+        visited = set()
+        max_depth = 20  # Prevent infinite loops
+        depth = 0
+        while current and depth < max_depth:
+            depth += 1
+            manager = None
+            manager_ldap = None
+
+            # Try to get manager from manager_info first
+            if current.get('manager_info'):
+                manager_ldap = current['manager_info']['ldap']
+                if manager_ldap not in visited:
+                    visited.add(manager_ldap)
+                    manager = get_employee_by_ldap(manager_ldap)
+                else:
+                    break
+            # If no manager_info, try using manager field
+            elif current.get('manager'):
+                manager_email = current['manager']
+                manager_ldap = manager_email.split('@')[0] if '@' in manager_email else manager_email
+                if manager_ldap and manager_ldap not in visited:
+                    visited.add(manager_ldap)
+                    manager = get_employee_by_ldap(manager_ldap)
+                    # If manager doesn't exist, create a placeholder
+                    if not manager:
+                        manager = {
+                            'ldap': manager_ldap,
+                            'name': manager_ldap.replace('.', ' ').title(),
+                            'email': manager_email,
+                            'designation': 'Manager',
+                            'organisation': 'Google',
+                            'avatar': 'https://via.placeholder.com/150',
+                            'company': 'GOOGLE'
+                        }
+                else:
+                    break
+            else:
+                break
+
+            if manager:
+                from_chain.append(manager)
+                current = manager
+            else:
+                break
+
+        # Build to_emp's manager chain
+        current = to_emp
+        visited = set()
+        depth = 0
+        while current and depth < max_depth:
+            depth += 1
+            manager = None
+            manager_ldap = None
+
+            # Try to get manager from manager_info first
+            if current.get('manager_info'):
+                manager_ldap = current['manager_info']['ldap']
+                if manager_ldap not in visited:
+                    visited.add(manager_ldap)
+                    manager = get_employee_by_ldap(manager_ldap)
+                else:
+                    break
+            # If no manager_info, try using manager field
+            elif current.get('manager'):
+                manager_email = current['manager']
+                manager_ldap = manager_email.split('@')[0] if '@' in manager_email else manager_email
+                if manager_ldap and manager_ldap not in visited:
+                    visited.add(manager_ldap)
+                    manager = get_employee_by_ldap(manager_ldap)
+                    # If manager doesn't exist, create a placeholder
+                    if not manager:
+                        manager = {
+                            'ldap': manager_ldap,
+                            'name': manager_ldap.replace('.', ' ').title(),
+                            'email': manager_email,
+                            'designation': 'Manager',
+                            'organisation': 'Google',
+                            'avatar': 'https://via.placeholder.com/150',
+                            'company': 'GOOGLE'
+                        }
+                else:
+                    break
+            else:
+                break
+
+            if manager:
+                to_chain.append(manager)
+                current = manager
+            else:
+                break
+
+        # Now build the complete path
+        path = []
+
+        # Check if to_emp is in from_emp's manager chain
+        for i, manager in enumerate(from_chain):
+            if manager['ldap'].lower() == to_ldap.lower():
+                # Path goes from from_emp up through managers to to_emp
+                # Count excludes from_emp, so: i + 1 (managers including to_emp)
+                path = [from_emp] + from_chain[:i+1]
+                return jsonify({'path': path, 'intermediateCount': i + 1})
+
+        # Check if from_emp is in to_emp's manager chain
+        for i, manager in enumerate(to_chain):
+            if manager['ldap'].lower() == from_ldap.lower():
+                # Path goes from from_emp down to to_emp
+                # Count excludes from_emp, so: i + 1 (managers down to to_emp)
+                path = [from_emp] + list(reversed(to_chain[:i])) + [to_emp]
+                return jsonify({'path': path, 'intermediateCount': i + 1})
+
+        # Check if they share a common manager
+        for i, from_manager in enumerate(from_chain):
+            for j, to_manager in enumerate(to_chain):
+                if from_manager['ldap'].lower() == to_manager['ldap'].lower():
+                    # Found common manager - build path through them
+                    # Path: from_emp -> i managers -> common_mgr -> j managers -> to_emp
+                    # Count excludes from_emp, so: i + 1 (common) + j + 1 (to_emp) = i + j + 2
+                    path_up = [from_emp] + from_chain[:i]
+                    common_manager = from_manager
+                    path_down = list(reversed(to_chain[:j])) + [to_emp]
+                    path = path_up + [common_manager] + path_down
+                    return jsonify({'path': path, 'intermediateCount': i + j + 2})
+
+        # No relationship found - return estimate based on chain lengths
+        # Path: from_emp -> all from_chain -> all to_chain -> to_emp
+        # Count excludes from_emp, so: len(from_chain) + len(to_chain) + 1 (to_emp)
+        estimate = len(from_chain) + len(to_chain) + 1
+        path = [from_emp] + from_chain + list(reversed(to_chain)) + [to_emp]
+        return jsonify({'path': path, 'intermediateCount': estimate})
+
+    except Exception as e:
+        logger.error(f"Organizational path API error for {from_ldap} -> {to_ldap}: {e}")
+        return jsonify({'error': 'Failed to get organizational path'}), 500
 
 @app.route('/api/employees/<employee_id>')
 def get_employee_details(employee_id):
@@ -1713,7 +2007,7 @@ def get_connections_data(employee_ldap):
             records = get_cached_connections_data()
             declared_connections = []
             for rec in records:
-                if rec.get('Google Employee LDAP') == employee_ldap:
+                if rec.get('Google Employee LDAP', '').lower() == employee_ldap.lower():
                     qt_ldap = rec.get('QT Employee LDAP')
 
                     # Calculate pathLength for this connection based on strength
@@ -1736,7 +2030,209 @@ def get_connections_data(employee_ldap):
         except Exception as e:
             logger.warning(f"⚠️ Could not load declared connections from cache: {e}")
 
-        # --- 2. Add connections to QT team members (Olenick employees) through manager chain (existing logic) ---
+        # --- 2. Add TRANSITIVE connections through other Google employees ---
+        # If the employee has no direct connections, check if they can reach other Google employees who DO have connections
+        if len(connections) == 0:
+            logger.info(f"🔍 No direct connections found for {employee_ldap}, searching for transitive connections...")
+
+            # Debug: Log employee info
+            if hierarchy:
+                emp_info = hierarchy.get('employee', {})
+                logger.info(f"   Employee: {emp_info.get('name')} ({emp_info.get('email')})")
+                logger.info(f"   Manager: {emp_info.get('manager')}")
+                logger.info(f"   Department: {emp_info.get('department')}")
+                logger.info(f"   Organisation: {emp_info.get('organisation')}")
+                if emp_info.get('manager_info'):
+                    logger.info(f"   Manager Info: {emp_info['manager_info'].get('name')} ({emp_info['manager_info'].get('email')})")
+                logger.info(f"   Manager chain length: {len(hierarchy.get('manager_chain', []))}")
+
+            try:
+                # Get ALL connections from spreadsheet
+                all_records = get_cached_connections_data()
+
+                # Get unique Google employees who have QT connections (bridge employees)
+                bridge_employees = {}
+                for rec in all_records:
+                    bridge_ldap = rec.get('Google Employee LDAP', '').lower()
+                    if bridge_ldap and bridge_ldap != employee_ldap.lower():
+                        if bridge_ldap not in bridge_employees:
+                            bridge_employees[bridge_ldap] = []
+                        bridge_employees[bridge_ldap].append({
+                            'qtLdap': rec.get('QT Employee LDAP'),
+                            'qtName': rec.get('QT Employee Name'),
+                            'qtEmail': rec.get('QT Employee Email'),
+                            'connectionStrength': rec.get('Connection Strength', '').lower(),
+                            'declaredBy': rec.get('Declared By'),
+                            'timestamp': rec.get('Timestamp'),
+                            'notes': rec.get('Notes')
+                        })
+
+                logger.info(f"   Found {len(bridge_employees)} Google employees with QT connections to check")
+                logger.info(f"   Bridge employees: {list(bridge_employees.keys())[:10]}")  # Log first 10
+
+                # Check if current employee can reach any of these bridge employees
+                # Build employee's manager chain for comparison (both emails and names)
+                employee_manager_chain_emails = []
+                employee_manager_chain_names = []
+                if hierarchy and hierarchy.get('manager_chain'):
+                    employee_manager_chain_emails = [mgr.get('email', '').lower() for mgr in hierarchy['manager_chain'] if mgr.get('email')]
+                    employee_manager_chain_names = [mgr.get('name', '').lower() for mgr in hierarchy['manager_chain'] if mgr.get('name')]
+
+                employee_email = hierarchy['employee'].get('email', '').lower() if hierarchy else ''
+                employee_name = hierarchy['employee'].get('name', '').lower() if hierarchy else ''
+                employee_department = hierarchy['employee'].get('department', '').lower() if hierarchy else ''
+                employee_organisation = hierarchy['employee'].get('organisation', '').lower() if hierarchy else ''
+
+                # Check each bridge employee
+                transitive_found = 0
+                for bridge_ldap, qt_connections in list(bridge_employees.items())[:100]:  # Increased from 50 to 100
+                    try:
+                        # Get bridge employee's info
+                        bridge_emp = get_employee_by_ldap(bridge_ldap)
+                        if not bridge_emp:
+                            continue
+
+                        bridge_email = bridge_emp.get('email', '').lower()
+                        bridge_name = bridge_emp.get('name', '').lower()
+                        bridge_manager = bridge_emp.get('manager', '').lower() if bridge_emp.get('manager') else ''
+                        bridge_department = bridge_emp.get('department', '').lower() if bridge_emp.get('department') else ''
+                        bridge_organisation = bridge_emp.get('organisation', '').lower() if bridge_emp.get('organisation') else ''
+
+                        # Check if reachable through organizational hierarchy
+                        is_reachable = False
+                        intermediate_person = None
+                        connection_method = None
+
+                        # Get employee's manager (could be email or name)
+                        employee_manager = hierarchy['employee'].get('manager', '').lower() if hierarchy else ''
+
+                        # Check 1: Same manager by email (siblings)
+                        if employee_manager and bridge_manager and employee_manager == bridge_manager:
+                            is_reachable = True
+                            intermediate_person = employee_manager
+                            connection_method = "same_manager"
+                            logger.debug(f"  ✓ {bridge_ldap} is a sibling (same manager: {employee_manager})")
+
+                        # Check 2: Same manager by name lookup (siblings)
+                        elif not is_reachable and employee_manager and bridge_manager:
+                            # Try to match managers by looking up their names
+                            emp_mgr_data = get_employee_by_ldap(employee_manager.split('@')[0]) if '@' in employee_manager else None
+                            bridge_mgr_data = get_employee_by_ldap(bridge_manager.split('@')[0]) if '@' in bridge_manager else None
+
+                            if emp_mgr_data and bridge_mgr_data:
+                                emp_mgr_name = emp_mgr_data.get('name', '').lower()
+                                bridge_mgr_name = bridge_mgr_data.get('name', '').lower()
+                                if emp_mgr_name and bridge_mgr_name and emp_mgr_name == bridge_mgr_name:
+                                    is_reachable = True
+                                    intermediate_person = emp_mgr_name
+                                    connection_method = "same_manager_name"
+                                    logger.debug(f"  ✓ {bridge_ldap} is a sibling (same manager by name: {emp_mgr_name})")
+
+                        # Check 3: Bridge employee is in the employee's manager chain (direct upline)
+                        if not is_reachable and bridge_email and bridge_email in employee_manager_chain_emails:
+                            is_reachable = True
+                            intermediate_person = bridge_email
+                            connection_method = "in_manager_chain"
+                            logger.debug(f"  ✓ {bridge_ldap} is in manager chain")
+
+                        # Check 4: Bridge employee name is in the employee's manager chain names
+                        if not is_reachable and bridge_name and bridge_name in employee_manager_chain_names:
+                            is_reachable = True
+                            intermediate_person = bridge_name
+                            connection_method = "in_manager_chain_name"
+                            logger.debug(f"  ✓ {bridge_ldap} ({bridge_name}) is in manager chain by name")
+
+                        # Check 5: Employee is the bridge's manager (direct report)
+                        if not is_reachable and employee_email and bridge_manager and employee_email == bridge_manager:
+                            is_reachable = True
+                            intermediate_person = employee_email
+                            connection_method = "direct_report"
+                            logger.debug(f"  ✓ {bridge_ldap} is a direct report")
+
+                        # Check 6: Employee name matches bridge's manager (direct report by name)
+                        if not is_reachable and employee_name and bridge_manager:
+                            bridge_mgr_data = get_employee_by_ldap(bridge_manager.split('@')[0]) if '@' in bridge_manager else None
+                            if bridge_mgr_data:
+                                bridge_mgr_name = bridge_mgr_data.get('name', '').lower()
+                                if bridge_mgr_name and employee_name == bridge_mgr_name:
+                                    is_reachable = True
+                                    intermediate_person = employee_name
+                                    connection_method = "direct_report_name"
+                                    logger.debug(f"  ✓ {bridge_ldap} is a direct report (by name match)")
+
+                        # Check 7: Shared manager in chain by email (cousins in org chart)
+                        if not is_reachable and bridge_manager and bridge_manager in employee_manager_chain_emails:
+                            is_reachable = True
+                            intermediate_person = bridge_manager
+                            connection_method = "shared_manager"
+                            logger.debug(f"  ✓ {bridge_ldap} shares manager {bridge_manager}")
+
+                        # Check 8: Shared manager in chain by name (cousins in org chart)
+                        bridge_mgr_name_for_calc = None  # Store for later calculation
+                        if not is_reachable and bridge_manager:
+                            bridge_mgr_data = get_employee_by_ldap(bridge_manager.split('@')[0]) if '@' in bridge_manager else None
+                            if bridge_mgr_data:
+                                bridge_mgr_name = bridge_mgr_data.get('name', '').lower()
+                                if bridge_mgr_name and bridge_mgr_name in employee_manager_chain_names:
+                                    is_reachable = True
+                                    intermediate_person = bridge_mgr_name
+                                    connection_method = "shared_manager_name"
+                                    bridge_mgr_name_for_calc = bridge_mgr_name  # Store for calculation
+                                    logger.debug(f"  ✓ {bridge_ldap} shares manager by name: {bridge_mgr_name}")
+
+                        # Check 9: Same department (colleagues)
+                        if not is_reachable and employee_department and bridge_department and employee_department == bridge_department:
+                            is_reachable = True
+                            intermediate_person = employee_department
+                            connection_method = "same_department"
+                            logger.debug(f"  ✓ {bridge_ldap} in same department: {employee_department}")
+
+                        # Check 10: Same organisation (colleagues)
+                        if not is_reachable and employee_organisation and bridge_organisation and employee_organisation == bridge_organisation:
+                            is_reachable = True
+                            intermediate_person = employee_organisation
+                            connection_method = "same_organisation"
+                            logger.debug(f"  ✓ {bridge_ldap} in same organisation: {employee_organisation}")
+
+                        # If reachable, add all their QT connections as transitive connections
+                        if is_reachable:
+                            # Calculate ACTUAL number of intermediate employees using proper org chart traversal
+                            intermediate_count = calculate_actual_organizational_path(employee_ldap, bridge_ldap)
+
+                            logger.debug(f"    → ACTUAL intermediate count for {bridge_emp.get('name')}: {intermediate_count} (method: {connection_method})")
+
+                            for qt_conn in qt_connections:
+                                connection_strength = qt_conn.get('connectionStrength', 'weak')
+
+                                connections.append({
+                                    'qtLdap': qt_conn['qtLdap'],
+                                    'qtName': qt_conn.get('qtName'),
+                                    'qtEmail': qt_conn.get('qtEmail'),
+                                    'connectionStrength': connection_strength,
+                                    'intermediatePerson': bridge_emp.get('name'),  # Bridge person's name
+                                    'intermediateLdap': bridge_ldap,
+                                    'source': 'Transitive',
+                                    'pathLength': intermediate_count,  # Number of intermediate employees
+                                    'declaredBy': qt_conn.get('declaredBy'),
+                                    'notes': f"Via {bridge_emp.get('name', bridge_ldap)}"
+                                })
+                                transitive_found += 1
+                    except Exception as e:
+                        logger.warning(f"Error checking bridge employee {bridge_ldap}: {e}")
+                        continue
+
+                if transitive_found > 0:
+                    logger.info(f"✅ Found {transitive_found} transitive connections for {employee_ldap}")
+                else:
+                    logger.info(f"⚠️  No transitive connections found for {employee_ldap}")
+                    logger.info(f"   Checked {len(list(bridge_employees.items())[:100])} bridge employees")
+                    logger.info(f"   Employee manager chain emails: {employee_manager_chain_emails[:3]}")
+                    logger.info(f"   Employee manager chain names: {employee_manager_chain_names[:3]}")
+
+            except Exception as e:
+                logger.error(f"⚠️ Could not search for transitive connections: {e}", exc_info=True)
+
+        # --- 3. Add connections to QT team members (Olenick employees) through manager chain (existing logic) ---
         # This part can be kept if you want to infer connections based on hierarchy *in addition* to declared ones
         # Ensure no duplicates if a connection is both declared and inferred
         existing_qt_ldaps = {conn['qtLdap'] for conn in connections}
@@ -1851,12 +2347,38 @@ def get_connections_data(employee_ldap):
                 logger.debug(f"Found {len(network_expansion_connections)} network expansion opportunities")
                 connections.extend(network_expansion_connections)
 
-        logger.debug(f"Returning {len(connections)} total connections for {employee_ldap}")
+        logger.debug(f"Found {len(connections)} total connections before deduplication for {employee_ldap}")
+
+        # --- DEDUPLICATION: Keep only the shortest path for each unique QT employee ---
+        qt_best_connections = {}  # Map of qtLdap -> connection with minimum pathLength
+
+        for conn in connections:
+            qt_ldap = conn.get('qtLdap')
+            if not qt_ldap:
+                continue
+
+            path_length = conn.get('pathLength', 999)  # Default to high number if not specified
+
+            # If this QT employee hasn't been seen, or this path is shorter, keep it
+            if qt_ldap not in qt_best_connections:
+                qt_best_connections[qt_ldap] = conn
+            else:
+                existing_path_length = qt_best_connections[qt_ldap].get('pathLength', 999)
+                if path_length < existing_path_length:
+                    logger.debug(f"  Replacing connection to {qt_ldap}: path {existing_path_length} -> {path_length}")
+                    qt_best_connections[qt_ldap] = conn
+                else:
+                    logger.debug(f"  Skipping duplicate connection to {qt_ldap}: path {path_length} (keeping {existing_path_length})")
+
+        # Convert back to list
+        deduplicated_connections = list(qt_best_connections.values())
+
+        logger.debug(f"After deduplication: {len(deduplicated_connections)} unique QT connections for {employee_ldap}")
 
         # Cache the result for future requests
-        connections_result_cache[cache_key] = (connections, current_time)
+        connections_result_cache[cache_key] = (deduplicated_connections, current_time)
 
-        return connections
+        return deduplicated_connections
 
     except Exception as e:
         # Handle quota exceeded errors silently - don't spam logs
