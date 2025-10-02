@@ -209,9 +209,18 @@ def get_cached_connections_data():
 
 def invalidate_connections_cache():
     """Invalidate the connections cache to force refresh on next access"""
-    global cached_connections_data, connections_cache_time
+    global cached_connections_data, connections_cache_time, connections_result_cache, global_employees_cache, global_employees_cache_time
     cached_connections_data = None
     connections_cache_time = None
+    connections_result_cache.clear()  # Clear computed connections cache
+    global_employees_cache = None  # Clear employees cache to force reload with new connections
+    global_employees_cache_time = None
+
+    # Clear LRU caches
+    get_sheet_data_bulk.cache_clear()  # Clear bulk data cache
+    get_employee_by_ldap.cache_clear()  # Clear employee lookup cache
+
+    logger.debug("🔄 All caches invalidated (including LRU caches) - next request will fetch fresh data")
 
 def calculate_actual_organizational_path(from_employee_ldap, to_employee_ldap):
     """
@@ -551,6 +560,7 @@ class OptimizedGoogleSheetsConnector:
         df = pd.DataFrame(sample_data[1:], columns=sample_data[0])
         logger.debug(f"Created sample data matching Google Sheets: {len(df)} rows")
         return df
+        
 class OptimizedGoogleSheetsProcessor:
     """Optimized processor with better memory management"""
     
@@ -1877,7 +1887,11 @@ def batch_update_connections_fixed():
             if rows_to_add:
                 connections_sheet.append_rows(rows_to_add)
                 logger.debug(f"🎉 Successfully wrote {len(rows_to_add)} rows to Google Sheets!")
-                
+
+                # Invalidate all caches to ensure fresh data on next search
+                invalidate_connections_cache()
+                logger.debug(f"🔄 Cache invalidated - search will show fresh data")
+
                 return jsonify({
                     'success': True,
                     'updated_count': len(connections),
