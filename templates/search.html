@@ -86,69 +86,141 @@
             display: none !important;
         }
 
-        /* Tree styles */
+        /* Enhanced Tree styles with proper hierarchy visualization */
         .tree-container {
             display: flex;
             flex-direction: column;
             align-items: center;
             overflow-x: auto;
-            padding: 2rem;
+            overflow-y: visible;
+            padding: 3rem 2rem;
+            min-height: 400px;
         }
         .tree-node {
             display: flex;
             flex-direction: column;
             align-items: center;
             position: relative;
+            margin: 0.5rem;
         }
-        .tree-node > .employee-card {
-            margin: 0 1rem;
+        .tree-node > .unified-card {
+            margin: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s, box-shadow 0.2s;
+            z-index: 1;
+        }
+        .tree-node > .unified-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
         .tree-children {
             display: flex;
             justify-content: center;
+            align-items: flex-start;
             position: relative;
-            padding-top: 2rem;
+            padding-top: 3rem;
+            gap: 2rem;
         }
+        /* Vertical line from parent to horizontal connector */
         .tree-children::before {
             content: "";
             position: absolute;
             top: 0;
             left: 50%;
-            width: 2px;
-            height: 1rem;
-            background-color: #cbd5e1;
+            width: 3px;
+            height: 1.5rem;
+            background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%);
+            border-radius: 2px;
+            transform: translateX(-50%);
         }
         .tree-node .tree-children .tree-node {
-            padding: 0 1rem;
+            margin: 0 1rem;
         }
+        /* Horizontal line connecting siblings */
         .tree-node > .tree-children > .tree-node::before {
             content: "";
             position: absolute;
-            top: -1rem;
+            top: -1.5rem;
             left: 0;
             width: 100%;
-            height: 2px;
-            background-color: #cbd5e1;
+            height: 3px;
+            background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%);
+            border-radius: 2px;
+            z-index: 0;
         }
+        /* Vertical line from horizontal connector to child */
         .tree-node > .tree-children > .tree-node::after {
             content: "";
             position: absolute;
-            top: -1rem;
+            top: -1.5rem;
             left: 50%;
-            width: 2px;
-            height: 1rem;
-            background-color: #cbd5e1;
+            width: 3px;
+            height: 1.5rem;
+            background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%);
+            border-radius: 2px;
+            transform: translateX(-50%);
+            z-index: 0;
         }
+        /* Special case for first child - horizontal line only from center to right */
         .tree-node > .tree-children > .tree-node:first-child::before {
             left: 50%;
             width: 50%;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
         }
+        /* Special case for last child - horizontal line only from left to center */
         .tree-node > .tree-children > .tree-node:last-child::before {
             right: 50%;
+            left: auto;
             width: 50%;
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
         }
+        /* Only child - no horizontal line needed */
         .tree-node > .tree-children > .tree-node:only-child::before {
             display: none;
+        }
+
+        /* Horizontal connection container for side-by-side cards */
+        .horizontal-connection-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        /* Center the Uri Frank card */
+        .horizontal-connection-container > .connection-card:first-child {
+            position: relative;
+        }
+
+        /* Position Lihi's card to the right with gap */
+        .horizontal-connection-container > .connection-card:last-child {
+            position: absolute;
+            left: calc(50% + 200px);
+        }
+
+        /* Connecting line between Uri Frank and Lihi */
+        .horizontal-connection-container::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 200px;
+            height: 3px;
+            background: linear-gradient(90deg, #3b82f6 0%, #10b981 100%);
+            border-radius: 2px;
+            transform: translateY(-50%);
+            z-index: 0;
+            margin-left: 100px;
+        }
+
+        /* Cards in horizontal connection */
+        .connection-card {
+            position: relative;
+            z-index: 1;
         }
 
         .connection-btn {
@@ -1434,7 +1506,15 @@
              */
             const bridgeLdap = connection.intermediateLdap;
 
+            console.log('buildOrganizationalPath called with:', {
+                googleEmployee: googleEmployee.name,
+                googleLdap: googleEmployee.ldap,
+                bridgeLdap: bridgeLdap,
+                connectionData: connection
+            });
+
             if (!bridgeLdap) {
+                console.log('No bridge LDAP, returning just searched employee');
                 return [googleEmployee];
             }
 
@@ -1445,15 +1525,18 @@
                 console.log('Organizational path response:', {
                     from: googleEmployee.name,
                     to: bridgeLdap,
+                    path: response.path,
                     pathLength: response.path?.length || 0,
                     intermediateCount: response.intermediateCount
                 });
 
                 if (response.path && response.path.length > 0) {
+                    console.log('Returning path:', response.path.map(e => e.name));
                     return response.path;
                 }
 
                 // Fallback: if API fails, return just the employees
+                console.log('API returned empty path, returning searched employee');
                 return [googleEmployee];
             } catch (error) {
                 console.error('Error fetching organizational path:', error);
@@ -1463,21 +1546,34 @@
 
         async function buildTreeStructure(qtEmployee, pathEmployees, connection) {
             /**
-             * Build the tree HTML structure matching the reference code's approach
+             * Build the tree HTML structure with Google org hierarchy and QT employee
              */
+            console.log('Building tree with:', {
+                qtEmployee,
+                pathEmployees,
+                connection,
+                intermediateLdap: connection.intermediateLdap
+            });
+
             // Create node map
             const nodeMap = new Map();
-            const directConnectionLdap = connection.intermediateLdap || pathEmployees[pathEmployees.length - 1]?.ldap;
+
+            // The person with the direct connection to QT employee
+            // This should be from connection.intermediateLdap (the bridge person)
+            const directConnectionLdap = connection.intermediateLdap || pathEmployees[0]?.ldap;
+
+            console.log('Direct connection person LDAP:', directConnectionLdap);
 
             // Create nodes for each employee in path
             pathEmployees.forEach(emp => {
                 nodeMap.set(emp.ldap, {
                     employee: emp,
-                    children: []
+                    children: [],
+                    isGoogle: true
                 });
             });
 
-            // Build relationships (parent-child)
+            // Build relationships (parent-child) - traverse from bottom to top
             for (let i = 0; i < pathEmployees.length - 1; i++) {
                 const current = pathEmployees[i];
                 const next = pathEmployees[i + 1];
@@ -1488,42 +1584,170 @@
                 }
             }
 
+            // Add QT employee as child of the person with the connection
+            const qtNode = {
+                employee: qtEmployee,
+                children: [],
+                isQT: true
+            };
+
+            // Find the person who has the direct connection and add QT employee as their child
+            let connectionPersonNode = null;
+
+            // First, try to find by intermediateLdap
+            if (directConnectionLdap) {
+                connectionPersonNode = nodeMap.get(directConnectionLdap.toLowerCase());
+
+                // If not found, try case-insensitive search
+                if (!connectionPersonNode) {
+                    for (const [ldap, node] of nodeMap.entries()) {
+                        if (ldap.toLowerCase() === directConnectionLdap.toLowerCase()) {
+                            connectionPersonNode = node;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (connectionPersonNode) {
+                console.log('Adding QT employee as child of:', connectionPersonNode.employee.name);
+                connectionPersonNode.children.push(qtNode);
+            } else {
+                console.log('Connection person not found, adding to root');
+                // Fallback: add to root (highest manager in path)
+                const rootNode = nodeMap.get(pathEmployees[pathEmployees.length - 1].ldap);
+                if (rootNode) {
+                    rootNode.children.push(qtNode);
+                }
+            }
+
             // Find root (the highest manager in our path)
             let rootNode = nodeMap.get(pathEmployees[pathEmployees.length - 1].ldap);
 
-            // Build tree HTML
-            function buildTreeHtml(node) {
+            // Build tree HTML with special handling for QT employee connection
+            function buildTreeHtml(node, isRoot = false) {
                 const nodeEl = document.createElement('div');
                 nodeEl.className = 'tree-node';
 
-                // Create employee card with google-border class
-                const card = document.createElement('div');
-                card.className = 'unified-card google-border';
-                card.innerHTML = `
-                    <div class="flex-1 flex flex-col items-center text-center justify-center">
-                        <img src="${node.employee.avatar || 'https://via.placeholder.com/150'}" alt="${node.employee.name}" class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow">
-                        <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 truncate w-full">${node.employee.organisation || node.employee.company || 'Google'}</p>
-                        <h4 class="font-bold text-sm text-gray-800 truncate w-full" title="${node.employee.name}">${node.employee.name}</h4>
-                        <p class="text-xs text-gray-500 truncate w-full" title="${node.employee.designation || ''}">${node.employee.designation || ''}</p>
-                        <p class="text-[10px] text-gray-400 mt-1 font-mono truncate w-full">${node.employee.ldap}</p>
-                    </div>
-                `;
-                nodeEl.appendChild(card);
+                // Check if this node has a QT employee as a child
+                const qtChild = node.children.find(child => child.isQT);
+                const googleChildren = node.children.filter(child => !child.isQT);
 
-                // Add children if any
-                if (node.children.length > 0) {
-                    const childrenEl = document.createElement('div');
-                    childrenEl.className = 'tree-children';
-                    node.children.forEach(child => {
-                        childrenEl.appendChild(buildTreeHtml(child));
-                    });
-                    nodeEl.appendChild(childrenEl);
+                // Determine card border style based on organization
+                const borderClass = node.isQT ? 'qt-border' : 'google-border';
+
+                // If this is the connection person with a QT child, create side-by-side layout
+                if (qtChild && !node.isQT) {
+                    // Create horizontal container for connection person and QT employee
+                    const horizontalContainer = document.createElement('div');
+                    horizontalContainer.className = 'horizontal-connection-container';
+
+                    // Create connection person card (left side)
+                    const leftCard = document.createElement('div');
+                    leftCard.className = `unified-card ${borderClass} connection-card`;
+                    const orgName = node.employee.organisation || node.employee.company || 'Google';
+                    leftCard.innerHTML = `
+                        <div class="flex-1 flex flex-col items-center text-center justify-center">
+                            <img src="${node.employee.avatar || 'https://via.placeholder.com/150'}" alt="${node.employee.name}" class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 truncate w-full">${orgName}</p>
+                            <h4 class="font-bold text-sm text-gray-800 truncate w-full" title="${node.employee.name}">${node.employee.name}</h4>
+                            <p class="text-xs text-gray-500 truncate w-full" title="${node.employee.designation || ''}">${node.employee.designation || ''}</p>
+                            <p class="text-[10px] text-gray-400 mt-1 font-mono truncate w-full">${node.employee.ldap}</p>
+                        </div>
+                    `;
+
+                    // Create QT employee card (right side)
+                    const rightCard = document.createElement('div');
+                    rightCard.className = 'unified-card qt-border connection-card';
+                    const qtOrgName = qtChild.employee.organisation || qtChild.employee.company || 'Qualitest';
+
+                    // Get initials from name
+                    const getInitials = (name) => {
+                        if (!name) return '?';
+                        const parts = name.trim().split(' ');
+                        if (parts.length >= 2) {
+                            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                        }
+                        return name.substring(0, 2).toUpperCase();
+                    };
+                    const initials = getInitials(qtChild.employee.name);
+
+                    rightCard.innerHTML = `
+                        <div class="flex-1 flex flex-col items-center text-center justify-center">
+                            <div class="w-14 h-14 rounded-full mb-2 border-2 border-purple-200 shadow-sm bg-purple-50 flex items-center justify-center">
+                                <span class="text-purple-700 font-bold text-lg">${initials}</span>
+                            </div>
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 truncate w-full">${qtOrgName}</p>
+                            <h4 class="font-bold text-sm text-gray-800 truncate w-full" title="${qtChild.employee.name}">${qtChild.employee.name}</h4>
+                            <p class="text-xs text-gray-500 truncate w-full" title="${qtChild.employee.designation || ''}">${qtChild.employee.designation || ''}</p>
+                            <p class="text-[10px] text-gray-400 mt-1 font-mono truncate w-full">${qtChild.employee.ldap}</p>
+                        </div>
+                    `;
+
+                    horizontalContainer.appendChild(leftCard);
+                    horizontalContainer.appendChild(rightCard);
+                    nodeEl.appendChild(horizontalContainer);
+
+                    // Add Google children below (if any)
+                    if (googleChildren.length > 0) {
+                        const childrenEl = document.createElement('div');
+                        childrenEl.className = 'tree-children';
+                        googleChildren.forEach(child => {
+                            childrenEl.appendChild(buildTreeHtml(child, false));
+                        });
+                        nodeEl.appendChild(childrenEl);
+                    }
+                } else {
+                    // Regular card rendering (no QT child)
+                    const card = document.createElement('div');
+                    card.className = `unified-card ${borderClass}`;
+                    const orgName = node.employee.organisation || node.employee.company || (node.isQT ? 'Qualitest' : 'Google');
+
+                    // For QT employees, show initials instead of avatar
+                    let avatarHtml;
+                    if (node.isQT) {
+                        const getInitials = (name) => {
+                            if (!name) return '?';
+                            const parts = name.trim().split(' ');
+                            if (parts.length >= 2) {
+                                return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                            }
+                            return name.substring(0, 2).toUpperCase();
+                        };
+                        const initials = getInitials(node.employee.name);
+                        avatarHtml = `<div class="w-14 h-14 rounded-full mb-2 border-2 border-purple-200 shadow-sm bg-purple-50 flex items-center justify-center">
+                            <span class="text-purple-700 font-bold text-lg">${initials}</span>
+                        </div>`;
+                    } else {
+                        avatarHtml = `<img src="${node.employee.avatar || 'https://via.placeholder.com/150'}" alt="${node.employee.name}" class="w-14 h-14 rounded-full mb-2 border-2 border-white shadow">`;
+                    }
+
+                    card.innerHTML = `
+                        <div class="flex-1 flex flex-col items-center text-center justify-center">
+                            ${avatarHtml}
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 truncate w-full">${orgName}</p>
+                            <h4 class="font-bold text-sm text-gray-800 truncate w-full" title="${node.employee.name}">${node.employee.name}</h4>
+                            <p class="text-xs text-gray-500 truncate w-full" title="${node.employee.designation || ''}">${node.employee.designation || ''}</p>
+                            <p class="text-[10px] text-gray-400 mt-1 font-mono truncate w-full">${node.employee.ldap}</p>
+                        </div>
+                    `;
+                    nodeEl.appendChild(card);
+
+                    // Add all children below
+                    if (node.children.length > 0) {
+                        const childrenEl = document.createElement('div');
+                        childrenEl.className = 'tree-children';
+                        node.children.forEach(child => {
+                            childrenEl.appendChild(buildTreeHtml(child, false));
+                        });
+                        nodeEl.appendChild(childrenEl);
+                    }
                 }
 
                 return nodeEl;
             }
 
-            return buildTreeHtml(rootNode);
+            return buildTreeHtml(rootNode, true);
         }
 
         async function init() {
