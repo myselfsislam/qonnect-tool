@@ -40,9 +40,7 @@
       .suggestion-item:hover {
         background-color: #f3f4f6;
       }
-      .hidden {
-        display: none !important;
-      }
+      /* Removed .hidden class - using Tailwind's responsive hidden instead */
       .unified-card {
         background-color: white;
         box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -128,12 +126,26 @@
     </style>
   </head>
 <body class="bg-gray-50 text-gray-900">
-    <nav class="w-full p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
+    <nav class="w-full p-3 md:p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
         <div class="container mx-auto flex items-center justify-between">
-            <a href="/" class="flex items-center gap-5">
-                <i class="fas fa-project-diagram text-2xl text-white"></i>
-                <h1 class="text-2xl font-bold text-white">Qonnect</h1>
+            <a href="/" class="flex items-center gap-2 md:gap-5">
+                <i class="fas fa-project-diagram text-xl md:text-2xl text-white"></i>
+                <h1 class="text-lg md:text-2xl font-bold text-white">Qonnect</h1>
             </a>
+            <div class="flex items-center gap-2 md:gap-4">
+                <a href="/" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-home"></i>
+                    <span class="hidden md:inline">Home</span>
+                </a>
+                <a href="/search" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-magnifying-glass-chart"></i>
+                    <span class="hidden md:inline">Search</span>
+                </a>
+                <a href="/logout" class="p-2 md:px-4 md:py-2 text-white hover:bg-red-600/90 bg-red-500 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span class="hidden md:inline">Logout</span>
+                </a>
+            </div>
         </div>
     </nav>
 
@@ -185,6 +197,28 @@
       let selectedGoogleEmployee = null;
       let pendingChanges = {};
       let existingConnections = {}; // NEW: Store existing connections from Google Sheets
+      let searchTimeout = null; // For debouncing search
+
+      // Performance: Add request cache to prevent duplicate API calls
+      const requestCache = new Map();
+      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+      async function cachedFetch(url) {
+        const now = Date.now();
+        if (requestCache.has(url)) {
+          const {data, timestamp} = requestCache.get(url);
+          if (now - timestamp < CACHE_TTL) {
+            console.log('📦 Cache hit:', url);
+            return data;
+          }
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+        requestCache.set(url, {data, timestamp: now});
+        console.log('🌐 Cache miss, fetched:', url);
+        return data;
+      }
 
       // Updated QT team members with correct details
       const qtTeamData = [
@@ -327,14 +361,12 @@
       // Fetch Google employees with fallback data
       async function fetchGoogleEmployees() {
         try {
-          const response = await fetch('/api/google-employees');
-          if (response.ok) {
-            const apiData = await response.json();
-            if (apiData?.length) {
-              googleEmployees = apiData;
-              console.log(`✅ Loaded ${googleEmployees.length} employees from API`);
-              return;
-            }
+          // Use cachedFetch for better performance
+          const apiData = await cachedFetch('/api/google-employees');
+          if (apiData?.length) {
+            googleEmployees = apiData;
+            console.log(`✅ Loaded ${googleEmployees.length} employees from API`);
+            return;
           }
         } catch (error) {
           console.warn('API unavailable, using fallback data');
@@ -390,13 +422,11 @@
       // Search Google employees with API fallback
       async function searchGoogleEmployees(query) {
         try {
-          const response = await fetch(`/api/search-google-employees?q=${encodeURIComponent(query)}`);
-          if (response.ok) {
-            const results = await response.json();
-            if (results?.length) {
-              console.log(`✅ API search: ${results.length} results for "${query}"`);
-              return results;
-            }
+          // Use cachedFetch for better performance
+          const results = await cachedFetch(`/api/search-google-employees?q=${encodeURIComponent(query)}`);
+          if (results?.length) {
+            console.log(`✅ API search: ${results.length} results for "${query}"`);
+            return results;
           }
         } catch (error) {
           console.warn('Search API unavailable, using local search');
@@ -657,23 +687,44 @@
 
       // Perform search and display results
       async function performSearch(searchTerm, suggestions, suggestionsList) {
-        const filteredEmployees = await searchGoogleEmployees(searchTerm);
-
-        suggestionsList.innerHTML = "";
-
-        if (filteredEmployees.length > 0) {
-          console.log(`📋 Showing ${filteredEmployees.length} suggestions`);
-
-          filteredEmployees.forEach(employee => {
-            const item = createSuggestionItem(employee, searchTerm);
-            suggestionsList.appendChild(item);
-          });
-
-          suggestions.classList.remove("hidden");
-        } else {
-          console.log(`❌ No results for "${searchTerm}"`);
-          suggestions.classList.add("hidden");
+        // Clear any existing search timeout
+        if (searchTimeout) {
+          clearTimeout(searchTimeout);
         }
+
+        // Show loading state immediately
+        suggestionsList.innerHTML = '<div class="p-4 text-gray-500 text-sm">Searching...</div>';
+        suggestions.classList.remove("hidden");
+
+        // Debounce search by 500ms to reduce API calls
+        searchTimeout = setTimeout(async () => {
+          try {
+            // Use cached fetch and limit results to 20
+            const filteredEmployees = await searchGoogleEmployees(searchTerm);
+            const limitedResults = filteredEmployees.slice(0, 20);
+
+            suggestionsList.innerHTML = "";
+
+            if (limitedResults.length > 0) {
+              console.log(`📋 Showing ${limitedResults.length} of ${filteredEmployees.length} suggestions`);
+
+              limitedResults.forEach(employee => {
+                const item = createSuggestionItem(employee, searchTerm);
+                suggestionsList.appendChild(item);
+              });
+
+              suggestions.classList.remove("hidden");
+            } else {
+              console.log(`❌ No results for "${searchTerm}"`);
+              suggestionsList.innerHTML = '<div class="p-4 text-gray-500 text-sm">No results found</div>';
+              suggestions.classList.remove("hidden");
+            }
+          } catch (error) {
+            console.error('Search error:', error);
+            suggestionsList.innerHTML = '<div class="p-4 text-red-500 text-sm">Search failed. Please try again.</div>';
+            suggestions.classList.remove("hidden");
+          }
+        }, 500); // 500ms debounce delay
       }
 
       // Create suggestion item

@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template_string, send_from_directory
+from flask import Flask, jsonify, request, render_template_string, send_from_directory, session, redirect, url_for, render_template
 from flask_cors import CORS
 import pandas as pd
 import json
@@ -13,12 +13,19 @@ import gspread
 from google.oauth2.service_account import Credentials
 import tempfile
 import logging
-from functools import lru_cache
+from functools import lru_cache, wraps
 import gc
 import time
+import secrets
 
 app = Flask(__name__)
 CORS(app)
+
+# Configure session secret key
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 
 # Rate limiter for Google Sheets API
 class APIRateLimiter:
@@ -981,13 +988,29 @@ def get_employee_hierarchy(employee_ldap):
         
         # Build manager chain (going up)
         current = employee
+        visited = set()  # Prevent infinite loops
         while current and current.get('manager_info'):
-            manager = get_employee_by_ldap(current['manager_info']['ldap'])
+            manager_ldap = current['manager_info']['ldap']
+            if manager_ldap in visited:
+                break
+            visited.add(manager_ldap)
+
+            manager = get_employee_by_ldap(manager_ldap)
             if manager:
                 hierarchy['manager_chain'].append(manager)
                 current = manager
             else:
+                # Manager not found - add Sundar as fallback CEO
+                sundar = get_employee_by_ldap('sundar')
+                if sundar and 'sundar' not in visited:
+                    hierarchy['manager_chain'].append(sundar)
                 break
+
+        # If employee has manager email but no manager_info, add Sundar as fallback
+        if not current.get('manager_info') and current.get('manager') and current['ldap'] == employee['ldap']:
+            sundar = get_employee_by_ldap('sundar')
+            if sundar and 'sundar' not in visited:
+                hierarchy['manager_chain'].append(sundar)
         
         # Count peers (people with same manager)
         if employee.get('manager_info'):
@@ -996,13 +1019,88 @@ def get_employee_hierarchy(employee_ldap):
                 hierarchy['peer_count'] = len(manager.get('reportees', [])) - 1  # Exclude self
         
         return hierarchy
-        
+
     except Exception as e:
         logger.error(f"Error getting hierarchy for {employee_ldap}: {e}")
         return None
 
+# Authentication Functions
+def get_credentials_from_sheet():
+    """Get credentials from Google Sheets 'Credentials' tab"""
+    try:
+        connector = OptimizedGoogleSheetsConnector(GOOGLE_SHEETS_CONFIG)
+        if not connector.authenticate():
+            logger.error("Failed to authenticate with Google Sheets")
+            return None
+
+        if not connector.connect_to_spreadsheet():
+            logger.error("Failed to connect to spreadsheet")
+            return None
+
+        # Get Credentials sheet
+        try:
+            credentials_sheet = connector.spreadsheet.worksheet('Credentials')
+        except:
+            logger.error("Credentials sheet not found")
+            return None
+
+        # Apply rate limiting
+        api_rate_limiter.wait_if_needed()
+
+        # Get all credentials data
+        credentials_data = credentials_sheet.get_all_records()
+        logger.info(f"Loaded {len(credentials_data)} credentials from sheet")
+
+        return credentials_data
+
+    except Exception as e:
+        logger.error(f"Error loading credentials: {e}")
+        return None
+
+def verify_user_credentials(username, password):
+    """Verify user credentials against Google Sheets"""
+    try:
+        credentials_data = get_credentials_from_sheet()
+
+        if not credentials_data:
+            return None, "Unable to load credentials"
+
+        # Find matching user
+        for cred in credentials_data:
+            if cred.get('username', '').strip() == username.strip():
+                # Check if active
+                status = cred.get('active_inactive', '').strip().lower()
+                if status != 'active':
+                    return None, "Account is inactive. Please contact administrator."
+
+                # Check password
+                if cred.get('password', '').strip() == password:
+                    return {
+                        'username': username,
+                        'qt_employee_name': cred.get('qt_employee_name', ''),
+                        'qt_employee_ldap': cred.get('qt_employee_ldap', '')
+                    }, None
+                else:
+                    return None, "Invalid username or password"
+
+        return None, "Invalid username or password"
+
+    except Exception as e:
+        logger.error(f"Error verifying credentials: {e}")
+        return None, "Authentication error. Please try again."
+
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 # Optimized Flask Routes
 @app.route('/')
+@login_required
 def index():
     try:
         with open('templates/index.html', 'r', encoding='utf-8') as f:
@@ -1080,7 +1178,82 @@ def render_fallback_dashboard():
     </html>
     '''
 
+# Authentication Routes
+@app.route('/login', methods=['GET'])
+def login():
+    """Login page"""
+    # If already logged in, redirect to home
+    if 'user' in session:
+        return redirect(url_for('index'))
+
+    try:
+        with open('templates/login.html', 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return '<h1>Login page not found</h1>'
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    """API endpoint for login"""
+    try:
+        data = request.get_json()
+        username = data.get('username', '').strip()
+        password = data.get('password', '').strip()
+        remember_me = data.get('remember_me', False)
+
+        if not username or not password:
+            return jsonify({
+                'success': False,
+                'message': 'Username and password are required'
+            }), 400
+
+        # Verify credentials
+        user_data, error = verify_user_credentials(username, password)
+
+        if error:
+            return jsonify({
+                'success': False,
+                'message': error
+            }), 401
+
+        if user_data:
+            # Create session
+            session['user'] = user_data
+            session.permanent = remember_me
+
+            logger.info(f"User logged in: {username}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Login successful',
+                'user': {
+                    'username': user_data['username'],
+                    'name': user_data['qt_employee_name']
+                }
+            })
+
+        return jsonify({
+            'success': False,
+            'message': 'Invalid credentials'
+        }), 401
+
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'An error occurred during login'
+        }), 500
+
+@app.route('/logout')
+def logout():
+    """Logout route"""
+    username = session.get('user', {}).get('username', 'Unknown')
+    session.pop('user', None)
+    logger.info(f"User logged out: {username}")
+    return redirect(url_for('login'))
+
 @app.route('/declare')
+@login_required
 def declare():
     try:
         with open('templates/declare.html', 'r', encoding='utf-8') as f:
@@ -1089,6 +1262,7 @@ def declare():
         return '<h1>Declare page not found</h1><a href="/">Back to Home</a>'
 
 @app.route('/search')
+@login_required
 def search():
     try:
         with open('templates/search.html', 'r', encoding='utf-8') as f:
@@ -1339,7 +1513,8 @@ def get_google_employees():
         load_google_sheets_data_optimized()
 
     try:
-        # Return lightweight employee objects
+        # Return minimal employee data without connections to reduce response size
+        # Connections field can be 10-20MB, causing Cloud Run response size limit errors
         return jsonify([
             {
                 'ldap': emp['ldap'],
@@ -1351,8 +1526,8 @@ def get_google_employees():
                 'organisation': emp['organisation'],
                 'avatar': emp['avatar'],
                 'manager': emp.get('manager', ''),
-                'location': emp.get('location', ''),
-                'connections': emp.get('connections', [])
+                'location': emp.get('location', '')
+                # connections field removed to keep response size under Cloud Run's 32MB limit
             }
             for emp in google_employees
         ])
@@ -1437,41 +1612,29 @@ def get_organizational_path_api(from_ldap, to_ldap):
             manager = None
             manager_ldap = None
 
-            # Try to get manager from manager_info first
+            # Only use manager_info to avoid including placeholder employees
+            # that don't have validated organizational relationships
             if current.get('manager_info'):
                 manager_ldap = current['manager_info']['ldap']
                 if manager_ldap not in visited:
                     visited.add(manager_ldap)
                     manager = get_employee_by_ldap(manager_ldap)
-                else:
-                    break
-            # If no manager_info, try using manager field
-            elif current.get('manager'):
-                manager_email = current['manager']
-                manager_ldap = manager_email.split('@')[0] if '@' in manager_email else manager_email
-                if manager_ldap and manager_ldap not in visited:
-                    visited.add(manager_ldap)
-                    manager = get_employee_by_ldap(manager_ldap)
-                    # If manager doesn't exist, create a placeholder
-                    if not manager:
-                        manager = {
-                            'ldap': manager_ldap,
-                            'name': manager_ldap.replace('.', ' ').title(),
-                            'email': manager_email,
-                            'designation': 'Manager',
-                            'organisation': 'Google',
-                            'avatar': 'https://via.placeholder.com/150',
-                            'company': 'GOOGLE'
-                        }
+                    if manager:
+                        from_chain.append(manager)
+                        current = manager
+                    else:
+                        # Manager not found - add Sundar as fallback CEO
+                        sundar = get_employee_by_ldap('sundar')
+                        if sundar and 'sundar' not in visited:
+                            from_chain.append(sundar)
+                        break
                 else:
                     break
             else:
-                break
-
-            if manager:
-                from_chain.append(manager)
-                current = manager
-            else:
+                # No manager_info - add Sundar as fallback CEO
+                sundar = get_employee_by_ldap('sundar')
+                if sundar and 'sundar' not in visited:
+                    from_chain.append(sundar)
                 break
 
         # Build to_emp's manager chain
@@ -1483,41 +1646,29 @@ def get_organizational_path_api(from_ldap, to_ldap):
             manager = None
             manager_ldap = None
 
-            # Try to get manager from manager_info first
+            # Only use manager_info to avoid including placeholder employees
+            # that don't have validated organizational relationships
             if current.get('manager_info'):
                 manager_ldap = current['manager_info']['ldap']
                 if manager_ldap not in visited:
                     visited.add(manager_ldap)
                     manager = get_employee_by_ldap(manager_ldap)
-                else:
-                    break
-            # If no manager_info, try using manager field
-            elif current.get('manager'):
-                manager_email = current['manager']
-                manager_ldap = manager_email.split('@')[0] if '@' in manager_email else manager_email
-                if manager_ldap and manager_ldap not in visited:
-                    visited.add(manager_ldap)
-                    manager = get_employee_by_ldap(manager_ldap)
-                    # If manager doesn't exist, create a placeholder
-                    if not manager:
-                        manager = {
-                            'ldap': manager_ldap,
-                            'name': manager_ldap.replace('.', ' ').title(),
-                            'email': manager_email,
-                            'designation': 'Manager',
-                            'organisation': 'Google',
-                            'avatar': 'https://via.placeholder.com/150',
-                            'company': 'GOOGLE'
-                        }
+                    if manager:
+                        to_chain.append(manager)
+                        current = manager
+                    else:
+                        # Manager not found - add Sundar as fallback CEO
+                        sundar = get_employee_by_ldap('sundar')
+                        if sundar and 'sundar' not in visited:
+                            to_chain.append(sundar)
+                        break
                 else:
                     break
             else:
-                break
-
-            if manager:
-                to_chain.append(manager)
-                current = manager
-            else:
+                # No manager_info - add Sundar as fallback CEO
+                sundar = get_employee_by_ldap('sundar')
+                if sundar and 'sundar' not in visited:
+                    to_chain.append(sundar)
                 break
 
         # Now build the complete path

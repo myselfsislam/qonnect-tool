@@ -104,9 +104,7 @@ body {
   border-radius: 50%;
   object-fit: cover;
 }
-.hidden {
-  display: none !important;
-}
+/* Removed global .hidden class - using Tailwind's responsive hidden instead */
 
 .strength-btn {
   font-weight: 500;
