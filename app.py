@@ -17,6 +17,8 @@ from functools import lru_cache, wraps
 import gc
 import time
 import secrets
+import pickle
+import hashlib
 
 app = Flask(__name__)
 CORS(app)
@@ -99,6 +101,50 @@ employees_cache_ttl = 1800  # 30 minutes cache for employees
 connections_result_cache = {}
 connections_result_cache_ttl = 3600  # 1 hour cache for computed connections
 
+# Cache for employee hierarchy lookups
+hierarchy_result_cache = {}
+hierarchy_result_cache_ttl = 3600  # 1 hour cache for hierarchy
+
+# Disk cache configuration (using /tmp for Cloud Run)
+DISK_CACHE_DIR = '/tmp/qonnect_cache'
+DISK_CACHE_TTL = 7200  # 2 hours
+
+# Helper functions for disk caching
+def get_disk_cache_path(cache_key):
+    """Get file path for disk cache"""
+    os.makedirs(DISK_CACHE_DIR, exist_ok=True)
+    # Hash the cache key to create a safe filename
+    key_hash = hashlib.md5(cache_key.encode()).hexdigest()
+    return os.path.join(DISK_CACHE_DIR, f'{key_hash}.pkl')
+
+def load_from_disk_cache(cache_key):
+    """Load data from disk cache if valid"""
+    try:
+        cache_path = get_disk_cache_path(cache_key)
+        if not os.path.exists(cache_path):
+            return None
+
+        # Check if cache is still valid
+        cache_age = time.time() - os.path.getmtime(cache_path)
+        if cache_age > DISK_CACHE_TTL:
+            os.remove(cache_path)
+            return None
+
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        logger.debug(f"Error loading from disk cache: {e}")
+        return None
+
+def save_to_disk_cache(cache_key, data):
+    """Save data to disk cache"""
+    try:
+        cache_path = get_disk_cache_path(cache_key)
+        with open(cache_path, 'wb') as f:
+            pickle.dump(data, f)
+    except Exception as e:
+        logger.debug(f"Error saving to disk cache: {e}")
+
 # Application startup optimization - preload data
 @lru_cache(maxsize=1)
 def get_sheet_data_bulk():
@@ -128,7 +174,7 @@ def get_sheet_data_bulk():
         logger.error(f"❌ Bulk data load failed: {e}")
         return None, None
 
-@lru_cache(maxsize=1000)
+@lru_cache(maxsize=5000)  # Increased cache size for better performance
 def get_employee_by_ldap(ldap: str):
     """Cached employee lookup by LDAP (case-insensitive)"""
     ldap_lower = ldap.lower() if ldap else ''
@@ -183,6 +229,14 @@ def get_cached_connections_data():
 
     current_time = time.time()
 
+    # Check disk cache first
+    disk_data = load_from_disk_cache('connections_data')
+    if disk_data:
+        logger.debug(f"💾 Using disk-cached connections data ({len(disk_data)} records)")
+        cached_connections_data = disk_data
+        connections_cache_time = current_time
+        return cached_connections_data
+
     # Check if cache is valid
     if (cached_connections_data is not None and
         connections_cache_time is not None and
@@ -206,7 +260,10 @@ def get_cached_connections_data():
         cached_connections_data = records
         connections_cache_time = current_time
 
-        logger.debug(f"✅ Cached {len(cached_connections_data)} connections records")
+        # Save to disk cache
+        save_to_disk_cache('connections_data', cached_connections_data)
+
+        logger.debug(f"✅ Cached {len(cached_connections_data)} connections records (memory + disk)")
         return cached_connections_data
 
     except Exception as e:
@@ -851,6 +908,20 @@ def load_google_sheets_data_optimized():
     global global_employees_cache, global_employees_cache_time
 
     try:
+        # Check disk cache first (survives instance restarts)
+        disk_data = load_from_disk_cache('employees_data_full')
+        if disk_data:
+            logger.debug(f"💾 Using disk-cached employee data ({len(disk_data['employees'])} records)")
+            employees_data = disk_data['employees']
+            google_employees = disk_data.get('google_employees', [])
+            core_team = disk_data.get('core_team', [])
+            processing_stats = disk_data.get('processing_stats', {})
+            last_sync_time = disk_data.get('last_sync_time')
+            global_employees_cache = employees_data
+            global_employees_cache_time = time.time()
+            build_search_index()
+            return True
+
         # Check if we have cached data that's still valid
         current_time = time.time()
         if (global_employees_cache is not None and
@@ -905,7 +976,17 @@ def load_google_sheets_data_optimized():
         logger.debug(f"Olenick: {len(olenick_employees):,}")
         logger.debug(f"Departments: {departments}")
         logger.debug(f"Locations: {locations}")
-        
+
+        # Save to disk cache for faster subsequent loads
+        save_to_disk_cache('employees_data_full', {
+            'employees': employees_data,
+            'google_employees': google_employees,
+            'core_team': core_team,
+            'processing_stats': processing_stats,
+            'last_sync_time': last_sync_time
+        })
+        logger.debug("💾 Saved employee data to disk cache")
+
         return True
         
     except Exception as e:
@@ -976,12 +1057,22 @@ def build_organizational_hierarchy():
         logger.error(f"Error building organizational hierarchy: {e}")
 
 def get_employee_hierarchy(employee_ldap):
-    """Get the full hierarchy for an employee (manager chain and reportees)"""
+    """Get the full hierarchy for an employee (manager chain and reportees) - CACHED"""
+    global hierarchy_result_cache
+
+    # Check cache first
+    current_time = time.time()
+    cache_key = employee_ldap.lower() if employee_ldap else ''
+    if cache_key in hierarchy_result_cache:
+        cached_data, cache_time = hierarchy_result_cache[cache_key]
+        if current_time - cache_time < hierarchy_result_cache_ttl:
+            return cached_data
+
     try:
         employee = get_employee_by_ldap(employee_ldap)
         if not employee:
             return None
-        
+
         hierarchy = {
             'employee': employee,
             'manager_chain': [],
@@ -1020,7 +1111,10 @@ def get_employee_hierarchy(employee_ldap):
             manager = get_employee_by_ldap(employee['manager_info']['ldap'])
             if manager:
                 hierarchy['peer_count'] = len(manager.get('reportees', [])) - 1  # Exclude self
-        
+
+        # Cache the result
+        hierarchy_result_cache[cache_key] = (hierarchy, current_time)
+
         return hierarchy
 
     except Exception as e:
@@ -3201,11 +3295,38 @@ def get_connection_stats():
         return jsonify({'error': str(e)}), 500
 
 def startup_cache_warmup():
-    """Pre-warm the cache on application startup"""
+    """Pre-warm the cache on application startup - AGGRESSIVE MODE"""
     try:
         logger.debug("🔥 Warming up cache on startup...")
+
+        # 1. Load employee data (includes disk cache, search index, org hierarchy)
         load_google_sheets_data_optimized()
+
+        # 2. Load connections data (includes disk cache)
         get_cached_connections_data()
+
+        # 3. Pre-compute hierarchies for core team members (most likely to be searched)
+        if core_team:
+            logger.debug(f"🎯 Pre-computing hierarchies for {len(core_team)} core team members...")
+            for member in core_team[:20]:  # Pre-warm top 20 core team members
+                ldap = member.get('ldap')
+                if ldap:
+                    try:
+                        get_employee_hierarchy(ldap)
+                    except Exception as e:
+                        logger.debug(f"Error pre-computing hierarchy for {ldap}: {e}")
+
+        # 4. Pre-populate LRU cache with common employee lookups
+        if employees_data:
+            logger.debug(f"🎯 Pre-populating LRU cache with {min(100, len(employees_data))} employees...")
+            for emp in employees_data[:100]:  # Pre-warm top 100 employees
+                ldap = emp.get('ldap')
+                if ldap:
+                    try:
+                        get_employee_by_ldap(ldap)
+                    except Exception as e:
+                        logger.debug(f"Error pre-loading employee {ldap}: {e}")
+
         logger.debug("✅ Cache warmed up successfully")
     except Exception as e:
         logger.error(f"❌ Cache warmup failed: {e}")
