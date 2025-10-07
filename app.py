@@ -30,7 +30,9 @@ bp = Blueprint('smartstakeholder', __name__, url_prefix='/smartstakeholdersearch
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # 30 days session lifetime
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True  # Refresh session on each request
 
 # Rate limiter for Google Sheets API
 class APIRateLimiter:
@@ -1314,9 +1316,9 @@ def api_login():
             }), 401
 
         if user_data:
-            # Create session
+            # Create session (always permanent for better UX - 30 days)
             session['user'] = user_data
-            session.permanent = remember_me
+            session.permanent = True  # Always persist session for 30 days
 
             logger.info(f"User logged in: {username}")
 
