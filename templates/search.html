@@ -390,11 +390,11 @@
                     <i class="fas fa-home"></i>
                     <span class="hidden md:inline">Home</span>
                 </a>
-                <a href="/declare" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
+                <a href="/smartstakeholdersearch/declare" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
                     <i class="fas fa-handshake"></i>
                     <span class="hidden md:inline">Declare</span>
                 </a>
-                <a href="/logout" class="p-2 md:px-4 md:py-2 text-white hover:bg-red-600/90 bg-red-500 rounded-lg transition-all duration-200 flex items-center gap-2">
+                <a href="/smartstakeholdersearch/logout" class="p-2 md:px-4 md:py-2 text-white hover:bg-red-600/90 bg-red-500 rounded-lg transition-all duration-200 flex items-center gap-2">
                     <i class="fas fa-sign-out-alt"></i>
                     <span class="hidden md:inline">Logout</span>
                 </a>
@@ -452,7 +452,7 @@
 
         async function loadFlaskData() {
             try {
-                const googleResponse = await fetch('/api/google-employees');
+                const googleResponse = await fetch('/smartstakeholdersearch/api/google-employees');
                 if (googleResponse.ok) {
                     const data = await googleResponse.json();
                     googleEmployees = data.map(emp => ({
@@ -467,7 +467,7 @@
                     }));
                 }
 
-                const qtResponse = await fetch('/api/qt-team');
+                const qtResponse = await fetch('/smartstakeholdersearch/api/qt-team');
                 if (qtResponse.ok) {
                     const qtData = await qtResponse.json();
                     if (qtData && qtData.length > 0) {
@@ -542,7 +542,7 @@
 
             // Load declared connections first (with caching)
             try {
-                const declaredConnections = await cachedFetch(`/api/connections/${employee.ldap}`);
+                const declaredConnections = await cachedFetch(`/smartstakeholdersearch/api/connections/${employee.ldap}`);
                 employee.declared_connections = declaredConnections || [];
 
             } catch (error) {
@@ -638,7 +638,7 @@
 
                         // Find the bridge person in Google employees (with caching)
                         try {
-                            const bridgeResults = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(bridgePersonName)}`);
+                            const bridgeResults = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(bridgePersonName)}`);
                             const bridgePerson = bridgeResults.find(emp =>
                                 emp.name.toLowerCase().includes(bridgePersonName.toLowerCase()) ||
                                 emp.ldap.toLowerCase().includes(bridgePersonName.toLowerCase())
@@ -912,7 +912,7 @@
                     // Use the search API endpoint to get results (with caching)
                     let filtered = [];
                     try {
-                        filtered = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
+                        filtered = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
                         filtered = filtered.slice(0, 20);
 
                         // Map API results to expected format
@@ -1016,7 +1016,7 @@
 
                         // Check if this P&C employee has declared connections to QT members
                         try {
-                            const qtConnectionsResponse = await fetch(`/api/connections/${target.ldap}`);
+                            const qtConnectionsResponse = await fetch(`/smartstakeholdersearch/api/connections/${target.ldap}`);
 
                             if (qtConnectionsResponse.ok) {
                                 const declaredQtConnections = await qtConnectionsResponse.json();
@@ -1145,7 +1145,7 @@
 
             // Check if this person has QT connections (with caching)
             try {
-                const qtConnections = await cachedFetch(`/api/connections/${person.ldap}`);
+                const qtConnections = await cachedFetch(`/smartstakeholdersearch/api/connections/${person.ldap}`);
                 // Filter out transitive connections to avoid wrong attributions
                 const directConnections = qtConnections.filter(conn => conn.source !== 'Transitive');
                 if (directConnections && directConnections.length > 0) {
@@ -1173,7 +1173,7 @@
             // Recursively check their direct reports (but limit depth to prevent too many API calls)
             if (depth < 3) {
                 try {
-                    const hierarchyData = await cachedFetch(`/api/hierarchy/${person.ldap}`);
+                    const hierarchyData = await cachedFetch(`/smartstakeholdersearch/api/hierarchy/${person.ldap}`);
                     const subordinates = hierarchyData.employee?.reportees || [];
                     if (subordinates.length > 0) {
                         // Use Promise.all for parallel processing (limit to 10 for performance)
@@ -1197,7 +1197,7 @@
 
             try {
                 // FIRST: Check the employee's own direct reports (like Laura under Katey) - with caching
-                const ownHierarchyData = await cachedFetch(`/api/hierarchy/${employee.ldap}`);
+                const ownHierarchyData = await cachedFetch(`/smartstakeholdersearch/api/hierarchy/${employee.ldap}`);
                 const ownDirectReports = ownHierarchyData.employee?.reportees || [];
 
                 // Check each direct report for QT connections in parallel (limit to 10 for performance)
@@ -1207,7 +1207,7 @@
                 ));
 
                 // SECOND: Specifically search for Laura Moussous as a known bridge person - with caching
-                const lauraResults = await cachedFetch(`/api/search-employees?q=Laura Moussous`);
+                const lauraResults = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=Laura Moussous`);
                 const laura = lauraResults.find(emp => emp.name.toLowerCase().includes('laura moussous') || emp.name.toLowerCase().includes('laura'));
 
                 if (laura && laura.ldap !== employee.ldap) {
@@ -1223,7 +1223,7 @@
                 const managerPromises = employeeHierarchy.slice(0, 3).map(async (manager) => {
                     try {
                         // Search for employees managed by this manager (with caching)
-                        const hierarchyData = await cachedFetch(`/api/hierarchy/${manager.ldap}`);
+                        const hierarchyData = await cachedFetch(`/smartstakeholdersearch/api/hierarchy/${manager.ldap}`);
                         const directReports = hierarchyData.employee?.reportees || [];
 
                         // Check each peer for QT connections in parallel (limit to 10)
@@ -1246,14 +1246,14 @@
                 // Also check for peers at the same level (siblings in org chart) - with caching and parallel processing
                 if (employee.manager) {
                     try {
-                        const siblings = await cachedFetch(`/api/search-employees?manager=${encodeURIComponent(employee.manager)}`);
+                        const siblings = await cachedFetch(`/smartstakeholdersearch/api/search-employees?manager=${encodeURIComponent(employee.manager)}`);
                         const filteredSiblings = siblings.filter(emp => emp.ldap !== employee.ldap);
 
                         // Check siblings for QT connections in parallel (limit to 5)
                         const siblingsToCheck = filteredSiblings.slice(0, 5);
                         await Promise.all(siblingsToCheck.map(async (sibling) => {
                             try {
-                                const siblingQtConnections = await cachedFetch(`/api/connections/${sibling.ldap}`);
+                                const siblingQtConnections = await cachedFetch(`/smartstakeholdersearch/api/connections/${sibling.ldap}`);
                                 // Filter out transitive connections for siblings too
                                 const directSiblingConnections = siblingQtConnections.filter(conn => conn.source !== 'Transitive');
 
@@ -1312,7 +1312,7 @@
                     processedManagers.add(currentManagerEmail.toLowerCase());
 
                     console.log(`🔍 Searching for manager: ${currentManagerEmail}`);
-                    const results = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(currentManagerEmail)}`);
+                    const results = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(currentManagerEmail)}`);
                     console.log(`  Found ${results.length} results`);
 
                     // Try multiple matching strategies to find the manager
@@ -1348,7 +1348,7 @@
                         const ldapToFind = currentManagerEmail.split('@')[0].toLowerCase();
                         console.log(`  Trying Strategy 5 with LDAP: ${ldapToFind}`);
                         try {
-                            const directResults = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(ldapToFind)}`);
+                            const directResults = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(ldapToFind)}`);
                             console.log(`  Strategy 5 found ${directResults.length} results`);
 
                             // First try exact LDAP match (most reliable)
@@ -1373,7 +1373,7 @@
                         // Strategy 6: Search by exact email (for cases like sundar@google.com)
                         console.log(`  Trying Strategy 6 with exact email search`);
                         try {
-                            const allEmployeesResponse = await cachedFetch(`/api/google-employees`);
+                            const allEmployeesResponse = await cachedFetch(`/smartstakeholdersearch/api/google-employees`);
                             manager = allEmployeesResponse.find(emp => emp.email && emp.email.toLowerCase() === currentManagerEmail.toLowerCase());
                             if (manager) {
                                 console.log(`  ✓ Strategy 6 matched: ${manager.name} (ldap: ${manager.ldap})`);
@@ -1393,7 +1393,7 @@
                         // Add Sundar Pichai as fallback CEO when manager chain breaks
                         try {
                             // Fetch Sundar directly by LDAP using the employee API
-                            const sundar = await cachedFetch(`/api/employees/sundar`);
+                            const sundar = await cachedFetch(`/smartstakeholdersearch/api/employees/sundar`);
                             console.log(`  Fetched Sundar directly:`, sundar);
 
                             if (sundar && sundar.name) {
@@ -1436,7 +1436,7 @@
                 // Execute all keyword searches in parallel
                 const keywordPromises = pcKeywords.map(async (keyword) => {
                     try {
-                        const results = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(keyword)}`);
+                        const results = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(keyword)}`);
                         return results.filter(emp =>
                             emp.ldap !== employee.ldap &&
                             (emp.designation?.toLowerCase().includes(keyword) ||
@@ -1455,7 +1455,7 @@
                 const specificTerms = ['organizational development', 'compensation', 'benefits', 'diversity'];
                 const termPromises = specificTerms.map(async (term) => {
                     try {
-                        const results = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(term)}`);
+                        const results = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(term)}`);
                         return results.slice(0, 5).filter(emp => emp.ldap !== employee.ldap);
                     } catch (error) {
                         console.error(`Error searching for term ${term}:`, error);
@@ -1680,7 +1680,7 @@
 
             try {
                 // Use the new organizational path API endpoint
-                const response = await cachedFetch(`/api/organizational-path/${googleEmployee.ldap}/${bridgeLdap}`);
+                const response = await cachedFetch(`/smartstakeholdersearch/api/organizational-path/${googleEmployee.ldap}/${bridgeLdap}`);
 
                 console.log('Organizational path response:', {
                     from: googleEmployee.name,
@@ -1823,7 +1823,7 @@
             let intermediatePathEmployees = [];
 
             if (intermediateLdap) {
-                const intermediateResults = await cachedFetch(`/api/search-employees?q=${encodeURIComponent(intermediateLdap)}`);
+                const intermediateResults = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(intermediateLdap)}`);
                 intermediatePerson = intermediateResults.find(emp => emp.ldap === intermediateLdap);
 
                 if (intermediatePerson) {

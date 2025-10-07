@@ -115,7 +115,7 @@
             try {
                 console.log('Loading data from Flask API...');
 
-                const googleResponse = await fetch('/api/google-employees');
+                const googleResponse = await fetch('/smartstakeholdersearch/api/google-employees');
                 if (googleResponse.ok) {
                     const data = await googleResponse.json();
                     googleEmployees = data.map(emp => ({
@@ -130,7 +130,7 @@
                     }));
                 }
 
-                const qtResponse = await fetch('/api/qt-team');
+                const qtResponse = await fetch('/smartstakeholdersearch/api/qt-team');
                 if (qtResponse.ok) {
                     const qtData = await qtResponse.json();
                     if (qtData && qtData.length > 0) {
@@ -200,7 +200,7 @@
 
             // Load declared connections
             try {
-                const connectionsResponse = await fetch(`/api/connections/${employee.ldap}`);
+                const connectionsResponse = await fetch(`/smartstakeholdersearch/api/connections/${employee.ldap}`);
                 const declaredConnections = await connectionsResponse.json();
                 employee.declared_connections = declaredConnections || [];
             } catch (error) {
@@ -325,7 +325,7 @@
                 // Use the search API endpoint to get results
                 let filtered = [];
                 try {
-                    const response = await fetch(`/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
+                    const response = await fetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
                     if (!response.ok) {
                         throw new Error('Search API failed');
                     }

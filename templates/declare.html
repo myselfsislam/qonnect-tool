@@ -137,11 +137,11 @@
                     <i class="fas fa-home"></i>
                     <span class="hidden md:inline">Home</span>
                 </a>
-                <a href="/search" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
+                <a href="/smartstakeholdersearch/search" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
                     <i class="fas fa-magnifying-glass-chart"></i>
                     <span class="hidden md:inline">Search</span>
                 </a>
-                <a href="/logout" class="p-2 md:px-4 md:py-2 text-white hover:bg-red-600/90 bg-red-500 rounded-lg transition-all duration-200 flex items-center gap-2">
+                <a href="/smartstakeholdersearch/logout" class="p-2 md:px-4 md:py-2 text-white hover:bg-red-600/90 bg-red-500 rounded-lg transition-all duration-200 flex items-center gap-2">
                     <i class="fas fa-sign-out-alt"></i>
                     <span class="hidden md:inline">Logout</span>
                 </a>
@@ -306,7 +306,7 @@
         try {
           console.log(`🔍 Loading existing connections for ${googleEmployee.name}...`);
 
-          const response = await fetch('/api/connections-from-sheets');
+          const response = await fetch('/smartstakeholdersearch/api/connections-from-sheets');
           if (!response.ok) {
             console.warn('Connections API unavailable');
             return {};
@@ -362,7 +362,7 @@
       async function fetchGoogleEmployees() {
         try {
           // Use cachedFetch for better performance
-          const apiData = await cachedFetch('/api/google-employees');
+          const apiData = await cachedFetch('/smartstakeholdersearch/api/google-employees');
           if (apiData?.length) {
             googleEmployees = apiData;
             console.log(`✅ Loaded ${googleEmployees.length} employees from API`);
@@ -423,7 +423,7 @@
       async function searchGoogleEmployees(query) {
         try {
           // Use cachedFetch for better performance
-          const results = await cachedFetch(`/api/search-google-employees?q=${encodeURIComponent(query)}`);
+          const results = await cachedFetch(`/smartstakeholdersearch/api/search-google-employees?q=${encodeURIComponent(query)}`);
           if (results?.length) {
             console.log(`✅ API search: ${results.length} results for "${query}"`);
             return results;
@@ -823,7 +823,7 @@
 
             console.log('Saving to Google Sheets:', payload);
 
-            const response = await fetch('/api/batch-update-connections', {
+            const response = await fetch('/smartstakeholdersearch/api/batch-update-connections', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),

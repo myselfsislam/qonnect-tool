@@ -260,7 +260,7 @@
             try {
                 console.log('Loading data from Flask API...');
                 
-                const googleResponse = await fetch('/api/google-employees');
+                const googleResponse = await fetch('/smartstakeholdersearch/api/google-employees');
                 if (googleResponse.ok) {
                     const data = await googleResponse.json();
                     googleEmployees = data.map(emp => ({
@@ -275,7 +275,7 @@
                     }));
                 }
 
-                const qtResponse = await fetch('/api/qt-team');
+                const qtResponse = await fetch('/smartstakeholdersearch/api/qt-team');
                 if (qtResponse.ok) {
                     const qtData = await qtResponse.json();
                     if (qtData && qtData.length > 0) {
@@ -295,7 +295,7 @@
                     throw new Error('Failed to load QT team data');
                 }
 
-                const connectionsResponse = await fetch('/api/connections-from-sheets');
+                const connectionsResponse = await fetch('/smartstakeholdersearch/api/connections-from-sheets');
                 if (connectionsResponse.ok) {
                     const sheetsData = await connectionsResponse.json();
                     connectionData = sheetsData.connections || [];
@@ -586,7 +586,7 @@
 
             // Load declared connections asynchronously for better performance
             try {
-                const connectionsResponse = await fetch(`/api/connections/${employee.ldap}`);
+                const connectionsResponse = await fetch(`/smartstakeholdersearch/api/connections/${employee.ldap}`);
                 const declaredConnections = await connectionsResponse.json();
                 employee.declared_connections = declaredConnections || [];
             } catch (error) {
@@ -597,7 +597,7 @@
             // Load hierarchy data to check for manager connections
             let managerConnections = [];
             try {
-                const hierarchyResponse = await fetch(`/api/hierarchy/${employee.ldap}`);
+                const hierarchyResponse = await fetch(`/smartstakeholdersearch/api/hierarchy/${employee.ldap}`);
                 const hierarchyData = await hierarchyResponse.json();
 
                 // Check connections for each manager in the chain
@@ -605,7 +605,7 @@
                 if (hierarchyData.manager_chain) {
                     for (const manager of hierarchyData.manager_chain) {
                         try {
-                            const managerConnectionsResponse = await fetch(`/api/connections/${manager.ldap}`);
+                            const managerConnectionsResponse = await fetch(`/smartstakeholdersearch/api/connections/${manager.ldap}`);
                             const managerDeclaredConnections = await managerConnectionsResponse.json();
                             if (managerDeclaredConnections && managerDeclaredConnections.length > 0) {
                                 // Add manager context to connections, but only if we haven't seen this QT connection before
@@ -1165,7 +1165,7 @@
                             // Use the search API endpoint to get results with declared connections
                             let filtered = [];
                             try {
-                                const response = await fetch(`/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
+                                const response = await fetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
                                 if (!response.ok) {
                                     throw new Error('Search API failed');
                                 }

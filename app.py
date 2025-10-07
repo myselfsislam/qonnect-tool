@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template_string, send_from_directory, session, redirect, url_for, render_template
+from flask import Flask, jsonify, request, render_template_string, send_from_directory, session, redirect, url_for, render_template, Blueprint
 from flask_cors import CORS
 import pandas as pd
 import json
@@ -20,6 +20,9 @@ import secrets
 
 app = Flask(__name__)
 CORS(app)
+
+# Create Blueprint with /smartstakeholdersearch prefix
+bp = Blueprint('smartstakeholder', __name__, url_prefix='/smartstakeholdersearch')
 
 # Configure session secret key
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -1094,12 +1097,12 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
-            return redirect(url_for('login'))
+            return redirect(url_for('smartstakeholder.login'))
         return f(*args, **kwargs)
     return decorated_function
 
 # Optimized Flask Routes
-@app.route('/')
+@bp.route('/')
 @login_required
 def index():
     try:
@@ -1179,12 +1182,12 @@ def render_fallback_dashboard():
     '''
 
 # Authentication Routes
-@app.route('/login', methods=['GET'])
+@bp.route('/login', methods=['GET'])
 def login():
     """Login page"""
     # If already logged in, redirect to home
     if 'user' in session:
-        return redirect(url_for('index'))
+        return redirect(url_for('smartstakeholder.index'))
 
     try:
         with open('templates/login.html', 'r', encoding='utf-8') as f:
@@ -1192,7 +1195,7 @@ def login():
     except FileNotFoundError:
         return '<h1>Login page not found</h1>'
 
-@app.route('/api/login', methods=['POST'])
+@bp.route('/api/login', methods=['POST'])
 def api_login():
     """API endpoint for login"""
     try:
@@ -1244,15 +1247,15 @@ def api_login():
             'message': 'An error occurred during login'
         }), 500
 
-@app.route('/logout')
+@bp.route('/logout')
 def logout():
     """Logout route"""
     username = session.get('user', {}).get('username', 'Unknown')
     session.pop('user', None)
     logger.info(f"User logged out: {username}")
-    return redirect(url_for('login'))
+    return redirect(url_for('smartstakeholder.login'))
 
-@app.route('/declare')
+@bp.route('/declare')
 @login_required
 def declare():
     try:
@@ -1261,7 +1264,7 @@ def declare():
     except FileNotFoundError:
         return '<h1>Declare page not found</h1><a href="/">Back to Home</a>'
 
-@app.route('/search')
+@bp.route('/search')
 @login_required
 def search():
     try:
@@ -1272,7 +1275,7 @@ def search():
 
 # FIXED API Endpoints
 
-@app.route('/api/sync-google-sheets', methods=['POST'])
+@bp.route('/api/sync-google-sheets', methods=['POST'])
 def sync_google_sheets():
     """Optimized sync endpoint"""
     try:
@@ -1298,12 +1301,12 @@ def sync_google_sheets():
         logger.error(f"Sync error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/sync-sharepoint', methods=['POST'])
+@bp.route('/api/sync-sharepoint', methods=['POST'])
 def sync_sharepoint():
     """Legacy endpoint - redirects to optimized Google Sheets sync"""
     return sync_google_sheets()
 
-@app.route('/api/search-employees')
+@bp.route('/api/search-employees')
 def search_employees():
     """OPTIMIZED: Employee search using search index for faster lookups"""
     # Auto-load data if not loaded yet
@@ -1415,7 +1418,7 @@ def search_employees():
         logger.error(f"Search error: {e}")
         return jsonify([])
 
-@app.route('/api/debug-get-employee-by-ldap/<ldap_id>')
+@bp.route('/api/debug-get-employee-by-ldap/<ldap_id>')
 def debug_get_employee_by_ldap(ldap_id):
     """Debug endpoint to test get_employee_by_ldap function"""
     try:
@@ -1430,7 +1433,7 @@ def debug_get_employee_by_ldap(ldap_id):
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/search-google-employees')
+@bp.route('/api/search-google-employees')
 def search_google_employees():
     """FIXED: Google employee search - finds Google employees only"""
     query = request.args.get('q', '').lower().strip()
@@ -1504,7 +1507,7 @@ def search_google_employees():
         logger.error(f"Google employee search error: {e}")
         return jsonify([])
 
-@app.route('/api/google-employees')
+@bp.route('/api/google-employees')
 def get_google_employees():
     """Get Google employees (optimized)"""
     # Auto-load data if not loaded yet
@@ -1536,7 +1539,7 @@ def get_google_employees():
         logger.error(f"Error getting Google employees: {e}")
         return jsonify([])
 
-@app.route('/api/qt-team')
+@bp.route('/api/qt-team')
 def get_qt_team():
     """Get QT team members (optimized)"""
     # Auto-load data if not loaded yet
@@ -1566,7 +1569,7 @@ def get_qt_team():
         logger.error(f"Error getting QT team: {e}")
         return jsonify([])
 
-@app.route('/api/hierarchy/<employee_ldap>')
+@bp.route('/api/hierarchy/<employee_ldap>')
 def get_employee_hierarchy_api(employee_ldap):
     """Get organizational hierarchy for an employee (manager chain + reportees)"""
     try:
@@ -1588,7 +1591,7 @@ def get_employee_hierarchy_api(employee_ldap):
         logger.error(f"Hierarchy API error for {employee_ldap}: {e}")
         return jsonify({'error': 'Failed to get hierarchy'}), 500
 
-@app.route('/api/organizational-path/<from_ldap>/<to_ldap>')
+@bp.route('/api/organizational-path/<from_ldap>/<to_ldap>')
 def get_organizational_path_api(from_ldap, to_ldap):
     """Get the actual organizational path between two employees"""
     try:
@@ -1714,7 +1717,7 @@ def get_organizational_path_api(from_ldap, to_ldap):
         logger.error(f"Organizational path API error for {from_ldap} -> {to_ldap}: {e}")
         return jsonify({'error': 'Failed to get organizational path'}), 500
 
-@app.route('/api/employees/<employee_id>')
+@bp.route('/api/employees/<employee_id>')
 def get_employee_details(employee_id):
     """Enhanced employee details with organizational hierarchy"""
     try:
@@ -1764,7 +1767,7 @@ def get_employee_details(employee_id):
         logger.error(f"Error getting employee details: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
-@app.route('/api/departments')
+@bp.route('/api/departments')
 def get_departments():
     """Optimized departments endpoint"""
     try:
@@ -1803,7 +1806,7 @@ def get_departments():
         logger.error(f"Error getting departments: {e}")
         return jsonify([])
 
-@app.route('/api/locations')
+@bp.route('/api/locations')
 def get_locations():
     """Optimized locations endpoint"""
     try:
@@ -1842,7 +1845,7 @@ def get_locations():
         logger.error(f"Error getting locations: {e}")
         return jsonify([])
 
-@app.route('/api/stats')
+@bp.route('/api/stats')
 def get_stats():
     """Optimized stats endpoint"""
     try:
@@ -1893,7 +1896,7 @@ def get_stats():
         return jsonify({'error': 'Stats unavailable'}), 500
 
 # Connection management (optimized)
-@app.route('/api/batch-update-connections', methods=['POST'])
+@bp.route('/api/batch-update-connections', methods=['POST'])
 def batch_update_connections_fixed():
     """FIXED: Enhanced connection updates that actually write to Google Sheets"""
     try:
@@ -2087,7 +2090,7 @@ def batch_update_connections_fixed():
             'timestamp': datetime.now().isoformat()
         }), 500
 
-@app.route('/api/test-sheet-write', methods=['POST'])
+@bp.route('/api/test-sheet-write', methods=['POST'])
 def test_sheet_write():
     """Test endpoint to verify Google Sheets writing works"""
     try:
@@ -2553,7 +2556,7 @@ def get_connections_data(employee_ldap):
         logger.error(f"Connections error for {employee_ldap}: {e}")
         return []
 
-@app.route('/api/connections/<employee_ldap>')
+@bp.route('/api/connections/<employee_ldap>')
 def get_connections(employee_ldap):
     """API endpoint to get connections for an employee"""
     try:
@@ -2567,7 +2570,7 @@ def get_connections(employee_ldap):
         logger.error(f"API Connections error for {employee_ldap}: {e}")
         return jsonify([])
 
-@app.route('/api/health')
+@bp.route('/api/health')
 def health_check():
     """Optimized health check"""
     try:
@@ -2603,7 +2606,7 @@ def internal_error(error):
 
 # Replace the debug endpoint in your app.py with this fixed version:
 
-@app.route('/api/debug-google-sheets')
+@bp.route('/api/debug-google-sheets')
 def debug_google_sheets_enhanced():
     """Enhanced debug endpoint to test Google Sheets connectivity and permissions"""
     try:
@@ -2755,7 +2758,7 @@ def debug_google_sheets_enhanced():
             'timestamp': datetime.now().isoformat()
         }), 500
 
-@app.route('/api/read-connections-sheet')
+@bp.route('/api/read-connections-sheet')
 def read_connections_sheet():
     """Reads and returns the content of the 'Connections' sheet (cached)."""
     try:
@@ -2780,7 +2783,7 @@ def read_connections_sheet():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/debug-employees-data')
+@bp.route('/api/debug-employees-data')
 def debug_employees_data():
     """Debug endpoint to inspect the first few entries of employees_data"""
     try:
@@ -3024,7 +3027,7 @@ class OptimizedGoogleSheetsWriter:
 sheet_writer = OptimizedGoogleSheetsWriter(GOOGLE_SHEETS_CONFIG)
 
 # Enhanced API endpoint for batch connection updates
-@app.route('/api/batch-update-connections', methods=['POST'])
+@bp.route('/api/batch-update-connections', methods=['POST'])
 def batch_update_connections_enhanced():
     """FIXED: Enhanced connection updates that write to Google Sheets"""
     try:
@@ -3140,7 +3143,7 @@ def batch_update_connections_enhanced():
         }), 500
 
 # New endpoint to view connections from Google Sheets
-@app.route('/api/connections-from-sheets')
+@bp.route('/api/connections-from-sheets')
 def get_connections_from_sheets():
     """Get all connections from the Google Sheets Connections tab (cached)"""
     try:
@@ -3170,7 +3173,7 @@ def get_connections_from_sheets():
         }), 500
 
 # New endpoint to get connection statistics
-@app.route('/api/connection-stats')
+@bp.route('/api/connection-stats')
 def get_connection_stats():
     """Get statistics about declared connections (cached)"""
     try:
@@ -3206,6 +3209,9 @@ def startup_cache_warmup():
         logger.debug("✅ Cache warmed up successfully")
     except Exception as e:
         logger.error(f"❌ Cache warmup failed: {e}")
+
+# Register blueprint
+app.register_blueprint(bp)
 
 if __name__ == '__main__':
     # Get port from environment variable (Cloud Run) or use 8080 as default
