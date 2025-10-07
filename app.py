@@ -1,6 +1,5 @@
 from flask import Flask, jsonify, request, render_template_string, send_from_directory, session, redirect, url_for, render_template, Blueprint
 from flask_cors import CORS
-from flask_compress import Compress
 import pandas as pd
 import json
 import os
@@ -21,9 +20,6 @@ import secrets
 
 app = Flask(__name__)
 CORS(app)
-
-# Enable gzip compression for all responses
-Compress(app)
 
 # Create Blueprint with /smartstakeholdersearch prefix
 bp = Blueprint('smartstakeholder', __name__, url_prefix='/smartstakeholdersearch')
@@ -92,16 +88,16 @@ last_sync_time = None
 # Cached connections data to avoid quota issues
 cached_connections_data = None
 connections_cache_time = None
-connections_cache_ttl = 7200  # 2 hours cache TTL - longer to improve performance
+connections_cache_ttl = 1800  # 30 minutes cache TTL - much longer to avoid frequent API calls
 
 # Global cache for all sheet data to minimize API calls
 global_employees_cache = None
 global_employees_cache_time = None
-employees_cache_ttl = 7200  # 2 hours cache for employees
+employees_cache_ttl = 1800  # 30 minutes cache for employees
 
 # Cache for computed connections per employee
 connections_result_cache = {}
-connections_result_cache_ttl = 7200  # 2 hours cache for computed connections
+connections_result_cache_ttl = 3600  # 1 hour cache for computed connections
 
 # Application startup optimization - preload data
 @lru_cache(maxsize=1)
