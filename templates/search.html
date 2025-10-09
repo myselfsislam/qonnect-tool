@@ -1804,6 +1804,123 @@
             return box;
         }
 
+        async function buildTreeStructureOptimized(googleEmployee, intermediateLdap, qtEmployee, connectionStrength = 'hierarchical') {
+            /**
+             * OPTIMIZED VERSION: Uses single API call to get all hierarchy data
+             * Replaces 24+ individual API calls with ONE call
+             */
+            console.log('🚀 Building optimized hierarchy with ONE API call');
+
+            // Make single API call to get all hierarchy data
+            const hierarchyData = await cachedFetch(`/smartstakeholdersearch/api/full-hierarchy-path/${googleEmployee.ldap}/${intermediateLdap}`);
+
+            console.log('✅ Got all hierarchy data in one call:', hierarchyData);
+
+            const container = document.createElement('div');
+            container.className = 'tree-container';
+            container.style.position = 'relative';
+
+            // Build searched employee's path (google_employee + manager_chain)
+            const searchedPathEmployees = [hierarchyData.google_employee, ...hierarchyData.google_manager_chain];
+
+            // Build intermediate person's path (intermediate_employee + manager_chain)
+            const intermediatePathEmployees = [hierarchyData.intermediate_employee, ...hierarchyData.intermediate_manager_chain];
+
+            // Trim paths to shared manager if one exists
+            let searchedPathToShared = [...searchedPathEmployees];
+            let intermediatePathToShared = [...intermediatePathEmployees];
+
+            if (hierarchyData.first_shared_manager) {
+                const sharedLdap = hierarchyData.first_shared_manager.ldap.toLowerCase();
+
+                // Trim searched path
+                const searchedIndex = searchedPathEmployees.findIndex(emp => emp.ldap.toLowerCase() === sharedLdap);
+                if (searchedIndex >= 0) {
+                    searchedPathToShared = searchedPathEmployees.slice(0, searchedIndex + 1);
+                }
+
+                // Trim intermediate path
+                const intermediateIndex = intermediatePathEmployees.findIndex(emp => emp.ldap.toLowerCase() === sharedLdap);
+                if (intermediateIndex >= 0) {
+                    intermediatePathToShared = intermediatePathEmployees.slice(0, intermediateIndex + 1);
+                }
+            }
+
+            // LEFT COLUMN: Searched employee
+            const leftColumn = document.createElement('div');
+            leftColumn.className = 'hierarchy-column';
+
+            const reversedSearchPath = [...searchedPathToShared].reverse();
+            reversedSearchPath.forEach((person, index) => {
+                const personBox = createPersonBox(person, 'google');
+                personBox.setAttribute('data-emp-ldap', person.ldap);
+                leftColumn.appendChild(personBox);
+
+                if (index < reversedSearchPath.length - 1) {
+                    const arrow = document.createElement('div');
+                    arrow.className = 'vertical-arrow';
+                    leftColumn.appendChild(arrow);
+                }
+            });
+
+            // MIDDLE COLUMN: Intermediate person
+            const middleColumn = document.createElement('div');
+            middleColumn.className = 'hierarchy-column';
+
+            if (intermediatePathEmployees.length > 0) {
+                const leftLdaps = new Set(searchedPathToShared.map(emp => emp.ldap.toLowerCase()));
+                const reversedIntermediatePath = [...intermediatePathToShared].reverse();
+
+                reversedIntermediatePath.forEach((person, index) => {
+                    if (!leftLdaps.has(person.ldap.toLowerCase())) {
+                        const personBox = createPersonBox(person, 'google');
+                        personBox.setAttribute('data-emp-ldap', person.ldap);
+                        middleColumn.appendChild(personBox);
+
+                        if (index < reversedIntermediatePath.length - 1 &&
+                            !leftLdaps.has(reversedIntermediatePath[index + 1].ldap.toLowerCase())) {
+                            const arrow = document.createElement('div');
+                            arrow.className = 'vertical-arrow';
+                            middleColumn.appendChild(arrow);
+                        }
+                    }
+                });
+            }
+
+            // RIGHT COLUMN: QT Employee
+            const rightColumn = document.createElement('div');
+            rightColumn.className = 'hierarchy-column';
+
+            // Add spacer to align with intermediate person at bottom
+            const spacerHeight = (intermediatePathToShared.length - 1) * 150;
+            if (spacerHeight > 0) {
+                const spacer = document.createElement('div');
+                spacer.style.height = `${spacerHeight}px`;
+                rightColumn.appendChild(spacer);
+            }
+
+            const qtBox = createPersonBox(qtEmployee, 'qt', connectionStrength);
+            qtBox.setAttribute('data-emp-ldap', qtEmployee.ldap);
+            rightColumn.appendChild(qtBox);
+
+            // Assemble columns
+            const hierarchyContainer = document.createElement('div');
+            hierarchyContainer.className = 'hierarchy-display';
+            hierarchyContainer.style.display = 'flex';
+            hierarchyContainer.style.gap = '40px';
+            hierarchyContainer.style.justifyContent = 'center';
+            hierarchyContainer.style.padding = '20px';
+
+            hierarchyContainer.appendChild(leftColumn);
+            if (middleColumn.children.length > 0) {
+                hierarchyContainer.appendChild(middleColumn);
+            }
+            hierarchyContainer.appendChild(rightColumn);
+
+            container.appendChild(hierarchyContainer);
+            return container;
+        }
+
         async function buildTreeStructure(qtEmployee, pathEmployees, connection, connectionStrength = 'hierarchical') {
             /**
              * Build three-column hierarchy layout:
