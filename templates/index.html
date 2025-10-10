@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qonnect - Home</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <nav class="w-full p-3 md:p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
+        <div class="container mx-auto flex items-center justify-between">
+            <a href="/smartstakeholdersearch/" class="flex items-center gap-2 md:gap-5">
+                <i class="fas fa-project-diagram text-xl md:text-2xl text-primary text-white"></i>
+                <h1 class="text-lg md:text-2xl font-bold text-white">Qonnect</h1>
+            </a>
+            <div class="flex items-center gap-2 md:gap-4">
+                <a href="/smartstakeholdersearch/search" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-magnifying-glass-chart"></i>
+                    <span class="hidden md:inline">Search</span>
+                </a>
+                <a href="/smartstakeholdersearch/declare" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-handshake"></i>
+                    <span class="hidden md:inline">Declare</span>
+                </a>
+                <a href="/smartstakeholdersearch/logout" class="p-2 md:px-4 md:py-2 text-white hover:bg-red-600/90 bg-red-500 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span class="hidden md:inline">Logout</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex flex-col items-center justify-center text-center p-8 min-h-[80vh]">
+        <div class="max-w-4xl">
+            <h2 class="text-5xl md:text-7xl font-black uppercase text-primary">Unlock Your Network</h2>
+            <p class="text-lg text-gray-600 mt-4 max-w-2xl mx-auto">
+                Visualize, declare, and search connections within the organization to build stronger professional relationships and find the right person for every introduction.
+            </p>
+            <div id="lastSync" class="mt-2 text-xs text-gray-400"></div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16 w-full max-w-5xl">
+            <div class="main-card bg-white border border-gray-200 p-8 rounded-xl text-center opacity-60 cursor-not-allowed">
+                <i class="fas fa-sitemap text-4xl text-primary mb-4"></i>
+                <h3 class="text-2xl font-semibold mb-2">Manage</h3>
+                <p class="text-gray-500">View your entire network map. (Soon)</p>
+                <div class="mt-4 text-xs text-gray-400">Coming Soon</div>
+            </div>
+
+            <a href="/smartstakeholdersearch/declare" class="main-card bg-white border border-gray-200 p-8 rounded-xl text-center hover:shadow-lg transition-all duration-300 group">
+                <i class="fas fa-handshake text-4xl text-primary mb-4 group-hover:scale-110 transition-transform"></i>
+                <h3 class="text-2xl font-semibold mb-2">Declare</h3>
+                <p class="text-gray-500">Log a new connection with a colleague.</p>
+                <div class="mt-4 flex items-center justify-center text-xs text-blue-600">
+                    <span>Start Connecting</span>
+                    <i class="fas fa-arrow-right ml-2"></i>
+                </div>
+            </a>
+
+            <a href="/smartstakeholdersearch/search" class="main-card bg-white border border-gray-200 p-8 rounded-xl text-center hover:shadow-lg transition-all duration-300 group">
+                <i class="fas fa-magnifying-glass-chart text-4xl text-primary mb-4 group-hover:scale-110 transition-transform"></i>
+                <h3 class="text-2xl font-semibold mb-2">Search</h3>
+                <p class="text-gray-500">Find introduction paths and networks.</p>
+                <div class="mt-4 flex items-center justify-center text-xs text-green-600">
+                    <span>Explore Network</span>
+                    <i class="fas fa-arrow-right ml-2"></i>
+                </div>
+            </a>
+        </div>
+    </main>
+
+    <!-- Status Messages -->
+    <div id="statusMessage" class="fixed bottom-4 right-4 p-4 rounded-lg shadow-lg hidden transition-all duration-300">
+        <div class="flex items-center gap-2">
+            <i id="statusIcon" class="fas fa-info-circle"></i>
+            <span id="statusText">Status message</span>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Animate elements
+            gsap.from("main > div", { 
+                duration: 0.8, 
+                y: 30, 
+                opacity: 0, 
+                stagger: 0.2, 
+                ease: "power3.out" 
+            });
+            
+            // Load initial stats
+            await loadStats();
+            
+            // Refresh data button
+            document.getElementById('refreshData').addEventListener('click', async () => {
+                await syncSharePointData();
+            });
+
+            // Auto-refresh every 5 minutes
+            setInterval(loadStats, 5 * 60 * 1000);
+        });
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/smartstakeholdersearch/api/stats');
+                const data = await response.json();
+
+                // Update stats display if you have stats elements on the page
+                // You can add code here to update stats in your UI
+                console.log('Stats loaded:', data);
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function syncSharePointData() {
+            const refreshBtn = document.getElementById('refreshData');
+            const syncStatus = document.getElementById('syncStatus');
+            
+            // Update UI
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            syncStatus.textContent = '🔄 Syncing...';
+            
+            try {
+                const response = await fetch('/smartstakeholdersearch/api/sync-sharepoint', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    syncStatus.textContent = '✅ Synced';
+                    await loadStats();
+                    showStatusMessage('Data synced successfully!', 'success');
+                    
+                    setTimeout(() => {
+                        syncStatus.textContent = '⚡ Live Data';
+                    }, 3000);
+                } else {
+                    syncStatus.textContent = '❌ Sync Failed';
+                    showStatusMessage(result.error || 'Sync failed', 'error');
+                }
+            } catch (error) {
+                console.error('Sync error:', error);
+                syncStatus.textContent = '❌ Sync Failed';
+                showStatusMessage('Network error during sync', 'error');
+            } finally {
+                refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+            }
+        }
+
+        function showStatusMessage(message, type = 'info') {
+            const statusDiv = document.getElementById('statusMessage');
+            const statusIcon = document.getElementById('statusIcon');
+            const statusText = document.getElementById('statusText');
+            
+            // Set icon and colors based on type
+            const config = {
+                success: {
+                    icon: 'fas fa-check-circle',
+                    bgClass: 'bg-green-500',
+                    textClass: 'text-white'
+                },
+                error: {
+                    icon: 'fas fa-exclamation-circle',
+                    bgClass: 'bg-red-500', 
+                    textClass: 'text-white'
+                },
+                info: {
+                    icon: 'fas fa-info-circle',
+                    bgClass: 'bg-blue-500',
+                    textClass: 'text-white'
+                }
+            };
+            
+            const settings = config[type] || config.info;
+            
+            statusIcon.className = settings.icon;
+            statusText.textContent = message;
+            statusDiv.className = `fixed bottom-4 right-4 p-4 rounded-lg shadow-lg transition-all duration-300 ${settings.bgClass} ${settings.textClass}`;
+            
+            // Show message
+            statusDiv.classList.remove('hidden');
+            
+            // Hide after 5 seconds
+            setTimeout(() => {
+                statusDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                switch(e.key) {
+                    case 'r':
+                        e.preventDefault();
+                        syncSharePointData();
+                        break;
+                    case 'd':
+                        e.preventDefault();
+                        window.location.href = '/smartstakeholdersearch/declare';
+                        break;
+                    case 's':
+                        e.preventDefault();
+                        window.location.href = '/smartstakeholdersearch/search';
+                        break;
+                }
+            }
+        });
+    </script>
+</body>
+</html>

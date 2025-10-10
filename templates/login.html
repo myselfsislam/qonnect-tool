@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qonnect - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation Bar -->
+    <nav class="w-full p-3 md:p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm">
+        <div class="container mx-auto flex items-center justify-center">
+            <a href="/smartstakeholdersearch/" class="flex items-center gap-2 md:gap-5">
+                <i class="fas fa-project-diagram text-xl md:text-2xl text-white"></i>
+                <h1 class="text-lg md:text-2xl font-bold text-white">Qonnect</h1>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Login Container -->
+    <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full space-y-8">
+            <!-- Login Card -->
+            <div class="bg-white rounded-2xl shadow-xl p-8 md:p-10">
+                <!-- Header -->
+                <div class="text-center mb-8">
+                    <div class="mx-auto h-16 w-16 bg-[#212559] rounded-full flex items-center justify-center mb-4">
+                        <i class="fas fa-lock text-white text-2xl"></i>
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-900">Welcome Back</h2>
+                    <p class="mt-2 text-sm text-gray-600">Sign in to access your network</p>
+                </div>
+
+                <!-- Error Message -->
+                <div id="errorMessage" class="hidden mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-exclamation-circle text-red-500"></i>
+                        <span id="errorText" class="text-sm text-red-700"></span>
+                    </div>
+                </div>
+
+                <!-- Login Form -->
+                <form id="loginForm" class="space-y-6">
+                    <!-- Username Field -->
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-user mr-2 text-gray-400"></i>Username
+                        </label>
+                        <input
+                            id="username"
+                            name="username"
+                            type="text"
+                            autocomplete="username"
+                            required
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#212559] focus:border-transparent transition-all duration-200 outline-none"
+                            placeholder="Enter your username"
+                        >
+                    </div>
+
+                    <!-- Password Field -->
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-lock mr-2 text-gray-400"></i>Password
+                        </label>
+                        <div class="relative">
+                            <input
+                                id="password"
+                                name="password"
+                                type="password"
+                                autocomplete="current-password"
+                                required
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#212559] focus:border-transparent transition-all duration-200 outline-none"
+                                placeholder="Enter your password"
+                            >
+                            <button
+                                type="button"
+                                id="togglePassword"
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <i id="eyeIcon" class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Remember Me Checkbox -->
+                    <div class="flex items-center">
+                        <input
+                            id="remember-me"
+                            name="remember-me"
+                            type="checkbox"
+                            checked
+                            class="h-4 w-4 text-[#212559] focus:ring-[#212559] border-gray-300 rounded"
+                        >
+                        <label for="remember-me" class="ml-2 block text-sm text-gray-700" title="Keep me logged in for 30 days">
+                            Remember me
+                        </label>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div>
+                        <button
+                            type="submit"
+                            id="loginButton"
+                            class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg text-white bg-[#212559] hover:bg-[#1a1d45] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#212559] transition-all duration-200 font-medium text-sm"
+                        >
+                            <span id="buttonText">Sign In</span>
+                            <i id="buttonIcon" class="fas fa-arrow-right ml-2"></i>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Footer -->
+                <div class="mt-6 text-center">
+                    <p class="text-xs text-gray-500">
+                        Powered by <span class="font-semibold">Qonnect</span> | Secure Access
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Toggle password visibility
+        document.getElementById('togglePassword').addEventListener('click', function() {
+            const passwordInput = document.getElementById('password');
+            const eyeIcon = document.getElementById('eyeIcon');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.classList.remove('fa-eye');
+                eyeIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.classList.remove('fa-eye-slash');
+                eyeIcon.classList.add('fa-eye');
+            }
+        });
+
+        // Handle form submission
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const rememberMe = document.getElementById('remember-me').checked;
+
+            // Show loading state
+            const loginButton = document.getElementById('loginButton');
+            const buttonText = document.getElementById('buttonText');
+            const buttonIcon = document.getElementById('buttonIcon');
+            const errorMessage = document.getElementById('errorMessage');
+
+            loginButton.disabled = true;
+            buttonText.textContent = 'Signing in...';
+            buttonIcon.classList.remove('fa-arrow-right');
+            buttonIcon.classList.add('fa-spinner', 'fa-spin');
+            errorMessage.classList.add('hidden');
+
+            try {
+                const response = await fetch('/smartstakeholdersearch/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: username,
+                        password: password,
+                        remember_me: rememberMe
+                    }),
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Success - redirect to home page
+                    buttonText.textContent = 'Success!';
+                    buttonIcon.classList.remove('fa-spinner', 'fa-spin');
+                    buttonIcon.classList.add('fa-check');
+
+                    setTimeout(() => {
+                        window.location.href = '/smartstakeholdersearch/';
+                    }, 500);
+                } else {
+                    // Show error message
+                    showError(data.message || 'Invalid credentials. Please try again.');
+
+                    // Reset button
+                    loginButton.disabled = false;
+                    buttonText.textContent = 'Sign In';
+                    buttonIcon.classList.remove('fa-spinner', 'fa-spin');
+                    buttonIcon.classList.add('fa-arrow-right');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('An error occurred. Please try again later.');
+
+                // Reset button
+                loginButton.disabled = false;
+                buttonText.textContent = 'Sign In';
+                buttonIcon.classList.remove('fa-spinner', 'fa-spin');
+                buttonIcon.classList.add('fa-arrow-right');
+            }
+        });
+
+        function showError(message) {
+            const errorMessage = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+
+            errorText.textContent = message;
+            errorMessage.classList.remove('hidden');
+
+            // Shake animation
+            errorMessage.style.animation = 'shake 0.5s';
+            setTimeout(() => {
+                errorMessage.style.animation = '';
+            }, 500);
+        }
+
+        // Add shake animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                25% { transform: translateX(-10px); }
+                75% { transform: translateX(10px); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Check for saved credentials on load
+        window.addEventListener('load', () => {
+            const savedUsername = localStorage.getItem('qonnect_username');
+            const rememberMeChecked = localStorage.getItem('qonnect_remember_me') === 'true';
+
+            if (savedUsername) {
+                document.getElementById('username').value = savedUsername;
+                document.getElementById('remember-me').checked = rememberMeChecked;
+                // Focus on password field since username is pre-filled
+                document.getElementById('password').focus();
+            } else {
+                // Focus on username field if nothing saved
+                document.getElementById('username').focus();
+            }
+        });
+
+        // Save credentials when remember me is checked
+        document.getElementById('loginForm').addEventListener('submit', function() {
+            const username = document.getElementById('username').value;
+            const rememberMe = document.getElementById('remember-me').checked;
+
+            if (rememberMe) {
+                // Save username to localStorage
+                localStorage.setItem('qonnect_username', username);
+                localStorage.setItem('qonnect_remember_me', 'true');
+            } else {
+                // Clear saved credentials
+                localStorage.removeItem('qonnect_username');
+                localStorage.removeItem('qonnect_remember_me');
+            }
+        });
+    </script>
+</body>
+</html>

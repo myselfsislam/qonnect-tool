@@ -1,0 +1,249 @@
+INFO:__main__:🚀 Starting migration from Google Sheets to Firestore...
+INFO:__main__:📋 Spreadsheet ID: 1OH64Lt1dm-WqlhAXVvXEbFb8-PNvh_ODkD79SjaYkPs
+INFO:__main__:================================================================================
+INFO:__main__:STEP 1: Migrating Employees
+INFO:__main__:================================================================================
+/Users/sism/Downloads/Sohail Islam/Personal Projects/qonnect_tool/migrate_sheets_to_firestore.py:214: DeprecationWarning: [Deprecated][in version 6.0.0]: client_factory will be replaced by gspread.http_client types
+  employees_count = migrate_employees()
+INFO:__main__:📥 Fetching employees from Google Sheets...
+INFO:__main__:✅ Found 95556 employees in Google Sheets
+INFO:__main__:📤 Uploading 95556 employees to Firestore...
+INFO:firestore_db:✅ Firestore client initialized
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1760091534.516692  128877 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+INFO:firestore_db:Batch 1: Added 500 employees
+INFO:firestore_db:Batch 2: Added 500 employees
+INFO:firestore_db:Batch 3: Added 500 employees
+INFO:firestore_db:Batch 4: Added 500 employees
+INFO:firestore_db:Batch 5: Added 500 employees
+INFO:firestore_db:Batch 6: Added 500 employees
+INFO:firestore_db:Batch 7: Added 500 employees
+INFO:firestore_db:Batch 8: Added 500 employees
+INFO:firestore_db:Batch 9: Added 500 employees
+INFO:firestore_db:Batch 10: Added 500 employees
+INFO:firestore_db:Batch 11: Added 500 employees
+INFO:firestore_db:Batch 12: Added 500 employees
+INFO:firestore_db:Batch 13: Added 500 employees
+INFO:firestore_db:Batch 14: Added 500 employees
+INFO:firestore_db:Batch 15: Added 500 employees
+INFO:firestore_db:Batch 16: Added 500 employees
+INFO:firestore_db:Batch 17: Added 500 employees
+INFO:firestore_db:Batch 18: Added 500 employees
+INFO:firestore_db:Batch 19: Added 500 employees
+INFO:firestore_db:Batch 20: Added 500 employees
+INFO:firestore_db:Batch 21: Added 500 employees
+INFO:firestore_db:Batch 22: Added 500 employees
+INFO:firestore_db:Batch 23: Added 500 employees
+INFO:firestore_db:Batch 24: Added 500 employees
+INFO:firestore_db:Batch 25: Added 500 employees
+INFO:firestore_db:Batch 26: Added 500 employees
+INFO:firestore_db:Batch 27: Added 500 employees
+INFO:firestore_db:Batch 28: Added 500 employees
+INFO:firestore_db:Batch 29: Added 500 employees
+INFO:firestore_db:Batch 30: Added 500 employees
+INFO:firestore_db:Batch 31: Added 500 employees
+INFO:firestore_db:Batch 32: Added 500 employees
+INFO:firestore_db:Batch 33: Added 500 employees
+INFO:firestore_db:Batch 34: Added 500 employees
+INFO:firestore_db:Batch 35: Added 500 employees
+INFO:firestore_db:Batch 36: Added 500 employees
+INFO:firestore_db:Batch 37: Added 500 employees
+INFO:firestore_db:Batch 38: Added 500 employees
+INFO:firestore_db:Batch 39: Added 500 employees
+INFO:firestore_db:Batch 40: Added 500 employees
+INFO:firestore_db:Batch 41: Added 500 employees
+INFO:firestore_db:Batch 42: Added 500 employees
+INFO:firestore_db:Batch 43: Added 500 employees
+INFO:firestore_db:Batch 44: Added 500 employees
+INFO:firestore_db:Batch 45: Added 500 employees
+INFO:firestore_db:Batch 46: Added 500 employees
+INFO:firestore_db:Batch 47: Added 500 employees
+INFO:firestore_db:Batch 48: Added 500 employees
+INFO:firestore_db:Batch 49: Added 500 employees
+INFO:firestore_db:Batch 50: Added 500 employees
+INFO:firestore_db:Batch 51: Added 500 employees
+INFO:firestore_db:Batch 52: Added 500 employees
+INFO:firestore_db:Batch 53: Added 500 employees
+INFO:firestore_db:Batch 54: Added 500 employees
+INFO:firestore_db:Batch 55: Added 500 employees
+INFO:firestore_db:Batch 56: Added 500 employees
+INFO:firestore_db:Batch 57: Added 500 employees
+INFO:firestore_db:Batch 58: Added 500 employees
+INFO:firestore_db:Batch 59: Added 500 employees
+INFO:firestore_db:Batch 60: Added 500 employees
+INFO:firestore_db:Batch 61: Added 500 employees
+INFO:firestore_db:Batch 62: Added 500 employees
+INFO:firestore_db:Batch 63: Added 500 employees
+INFO:firestore_db:Batch 64: Added 500 employees
+INFO:firestore_db:Batch 65: Added 500 employees
+INFO:firestore_db:Batch 66: Added 500 employees
+INFO:firestore_db:Batch 67: Added 500 employees
+INFO:firestore_db:Batch 68: Added 500 employees
+INFO:firestore_db:Batch 69: Added 500 employees
+INFO:firestore_db:Batch 70: Added 500 employees
+INFO:firestore_db:Batch 71: Added 500 employees
+INFO:firestore_db:Batch 72: Added 500 employees
+INFO:firestore_db:Batch 73: Added 500 employees
+INFO:firestore_db:Batch 74: Added 500 employees
+INFO:firestore_db:Batch 75: Added 500 employees
+INFO:firestore_db:Batch 76: Added 500 employees
+INFO:firestore_db:Batch 77: Added 500 employees
+INFO:firestore_db:Batch 78: Added 500 employees
+INFO:firestore_db:Batch 79: Added 500 employees
+INFO:firestore_db:Batch 80: Added 500 employees
+INFO:firestore_db:Batch 81: Added 500 employees
+INFO:firestore_db:Batch 82: Added 500 employees
+INFO:firestore_db:Batch 83: Added 500 employees
+INFO:firestore_db:Batch 84: Added 500 employees
+INFO:firestore_db:Batch 85: Added 500 employees
+INFO:firestore_db:Batch 86: Added 500 employees
+INFO:firestore_db:Batch 87: Added 500 employees
+INFO:firestore_db:Batch 88: Added 500 employees
+INFO:firestore_db:Batch 89: Added 500 employees
+INFO:firestore_db:Batch 90: Added 500 employees
+INFO:firestore_db:Batch 91: Added 500 employees
+INFO:firestore_db:Batch 92: Added 500 employees
+INFO:firestore_db:Batch 93: Added 500 employees
+INFO:firestore_db:Batch 94: Added 500 employees
+INFO:firestore_db:Batch 95: Added 500 employees
+INFO:firestore_db:Batch 96: Added 500 employees
+INFO:firestore_db:Batch 97: Added 500 employees
+INFO:firestore_db:Batch 98: Added 500 employees
+INFO:firestore_db:Batch 99: Added 500 employees
+INFO:firestore_db:Batch 100: Added 500 employees
+INFO:firestore_db:Batch 101: Added 500 employees
+INFO:firestore_db:Batch 102: Added 500 employees
+INFO:firestore_db:Batch 103: Added 500 employees
+INFO:firestore_db:Batch 104: Added 500 employees
+INFO:firestore_db:Batch 105: Added 500 employees
+INFO:firestore_db:Batch 106: Added 500 employees
+INFO:firestore_db:Batch 107: Added 500 employees
+INFO:firestore_db:Batch 108: Added 500 employees
+INFO:firestore_db:Batch 109: Added 500 employees
+INFO:firestore_db:Batch 110: Added 500 employees
+INFO:firestore_db:Batch 111: Added 500 employees
+INFO:firestore_db:Batch 112: Added 500 employees
+INFO:firestore_db:Batch 113: Added 500 employees
+INFO:firestore_db:Batch 114: Added 500 employees
+INFO:firestore_db:Batch 115: Added 500 employees
+INFO:firestore_db:Batch 116: Added 500 employees
+INFO:firestore_db:Batch 117: Added 500 employees
+INFO:firestore_db:Batch 118: Added 500 employees
+INFO:firestore_db:Batch 119: Added 500 employees
+INFO:firestore_db:Batch 120: Added 500 employees
+INFO:firestore_db:Batch 121: Added 500 employees
+INFO:firestore_db:Batch 122: Added 500 employees
+INFO:firestore_db:Batch 123: Added 500 employees
+INFO:firestore_db:Batch 124: Added 500 employees
+INFO:firestore_db:Batch 125: Added 500 employees
+INFO:firestore_db:Batch 126: Added 500 employees
+INFO:firestore_db:Batch 127: Added 500 employees
+INFO:firestore_db:Batch 128: Added 500 employees
+INFO:firestore_db:Batch 129: Added 500 employees
+INFO:firestore_db:Batch 130: Added 500 employees
+INFO:firestore_db:Batch 131: Added 500 employees
+INFO:firestore_db:Batch 132: Added 500 employees
+INFO:firestore_db:Batch 133: Added 500 employees
+INFO:firestore_db:Batch 134: Added 500 employees
+INFO:firestore_db:Batch 135: Added 500 employees
+INFO:firestore_db:Batch 136: Added 500 employees
+INFO:firestore_db:Batch 137: Added 500 employees
+INFO:firestore_db:Batch 138: Added 500 employees
+INFO:firestore_db:Batch 139: Added 500 employees
+INFO:firestore_db:Batch 140: Added 500 employees
+INFO:firestore_db:Batch 141: Added 500 employees
+INFO:firestore_db:Batch 142: Added 500 employees
+INFO:firestore_db:Batch 143: Added 500 employees
+INFO:firestore_db:Batch 144: Added 500 employees
+INFO:firestore_db:Batch 145: Added 500 employees
+INFO:firestore_db:Batch 146: Added 500 employees
+INFO:firestore_db:Batch 147: Added 500 employees
+INFO:firestore_db:Batch 148: Added 500 employees
+INFO:firestore_db:Batch 149: Added 500 employees
+INFO:firestore_db:Batch 150: Added 500 employees
+INFO:firestore_db:Batch 151: Added 500 employees
+INFO:firestore_db:Batch 152: Added 500 employees
+INFO:firestore_db:Batch 153: Added 500 employees
+INFO:firestore_db:Batch 154: Added 500 employees
+INFO:firestore_db:Batch 155: Added 500 employees
+INFO:firestore_db:Batch 156: Added 500 employees
+INFO:firestore_db:Batch 157: Added 500 employees
+INFO:firestore_db:Batch 158: Added 500 employees
+INFO:firestore_db:Batch 159: Added 500 employees
+INFO:firestore_db:Batch 160: Added 500 employees
+INFO:firestore_db:Batch 161: Added 500 employees
+INFO:firestore_db:Batch 162: Added 500 employees
+INFO:firestore_db:Batch 163: Added 500 employees
+INFO:firestore_db:Batch 164: Added 500 employees
+INFO:firestore_db:Batch 165: Added 500 employees
+INFO:firestore_db:Batch 166: Added 500 employees
+INFO:firestore_db:Batch 167: Added 500 employees
+INFO:firestore_db:Batch 168: Added 500 employees
+INFO:firestore_db:Batch 169: Added 500 employees
+INFO:firestore_db:Batch 170: Added 500 employees
+INFO:firestore_db:Batch 171: Added 500 employees
+INFO:firestore_db:Batch 172: Added 500 employees
+INFO:firestore_db:Batch 173: Added 500 employees
+INFO:firestore_db:Batch 174: Added 500 employees
+INFO:firestore_db:Batch 175: Added 500 employees
+INFO:firestore_db:Batch 176: Added 500 employees
+INFO:firestore_db:Batch 177: Added 500 employees
+INFO:firestore_db:Batch 178: Added 500 employees
+INFO:firestore_db:Batch 179: Added 500 employees
+INFO:firestore_db:Batch 180: Added 500 employees
+INFO:firestore_db:Batch 181: Added 500 employees
+INFO:firestore_db:Batch 182: Added 500 employees
+INFO:firestore_db:Batch 183: Added 500 employees
+INFO:firestore_db:Batch 184: Added 500 employees
+INFO:firestore_db:Batch 185: Added 500 employees
+INFO:firestore_db:Batch 186: Added 500 employees
+INFO:firestore_db:Batch 187: Added 500 employees
+INFO:firestore_db:Batch 188: Added 500 employees
+INFO:firestore_db:Batch 189: Added 500 employees
+INFO:firestore_db:Batch 190: Added 500 employees
+ERROR:firestore_db:Batch add error: 504 Deadline Exceeded
+INFO:__main__:✅ Successfully migrated 95500 employees to Firestore
+INFO:__main__:
+================================================================================
+INFO:__main__:STEP 2: Migrating Connections
+INFO:__main__:================================================================================
+/Users/sism/Downloads/Sohail Islam/Personal Projects/qonnect_tool/migrate_sheets_to_firestore.py:215: DeprecationWarning: [Deprecated][in version 6.0.0]: client_factory will be replaced by gspread.http_client types
+  connections_count = migrate_connections()
+WARNING:urllib3.connectionpool:Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x1063c81c0>: Failed to resolve 'oauth2.googleapis.com' ([Errno 8] nodename nor servname provided, or not known)")': /token
+WARNING:urllib3.connectionpool:Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x106904bb0>: Failed to resolve 'oauth2.googleapis.com' ([Errno 8] nodename nor servname provided, or not known)")': /token
+WARNING:urllib3.connectionpool:Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x106904c40>: Failed to resolve 'oauth2.googleapis.com' ([Errno 8] nodename nor servname provided, or not known)")': /token
+ERROR:__main__:❌ Error migrating connections: HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): Max retries exceeded with url: /token (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x106905cc0>: Failed to resolve 'oauth2.googleapis.com' ([Errno 8] nodename nor servname provided, or not known)"))
+INFO:__main__:
+================================================================================
+INFO:__main__:STEP 3: Migrating Credentials
+INFO:__main__:================================================================================
+/Users/sism/Downloads/Sohail Islam/Personal Projects/qonnect_tool/migrate_sheets_to_firestore.py:216: DeprecationWarning: [Deprecated][in version 6.0.0]: client_factory will be replaced by gspread.http_client types
+  credentials_count = migrate_credentials()
+WARNING:urllib3.connectionpool:Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x106983490>: Failed to resolve 'oauth2.googleapis.com' ([Errno 8] nodename nor servname provided, or not known)")': /token
+WARNING:urllib3.connectionpool:Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x106983940>: Failed to resolve 'oauth2.googleapis.com' ([Errno 8] nodename nor servname provided, or not known)")': /token
+WARNING:urllib3.connectionpool:Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x106983160>: Failed to resolve 'oauth2.googleapis.com' ([Errno 8] nodename nor servname provided, or not known)")': /token
+ERROR:__main__:❌ Error migrating credentials: HTTPSConnectionPool(host='oauth2.googleapis.com', port=443): Max retries exceeded with url: /token (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x1069815d0>: Failed to resolve 'oauth2.googleapis.com' ([Errno 8] nodename nor servname provided, or not known)"))
+INFO:__main__:
+================================================================================
+INFO:__main__:STEP 4: Verification
+INFO:__main__:================================================================================
+INFO:firestore_db:Retrieved 95259 employees from Firestore
+INFO:__main__:✅ Employees in Firestore: 95259
+INFO:firestore_db:Retrieved 97 connections from Firestore
+INFO:__main__:✅ Connections in Firestore: 97
+INFO:firestore_db:Retrieved 0 credentials from Firestore
+INFO:__main__:✅ Credentials in Firestore: 0
+INFO:__main__:✅ Sample employee lookup successful: . Chanda
+/opt/homebrew/lib/python3.10/site-packages/google/cloud/firestore_v1/base_collection.py:295: UserWarning: Detected filter using positional arguments. Prefer using the 'filter' keyword argument instead.
+  return query.where(field_path, op_string, value)
+INFO:__main__:✅ Sample connection lookup successful: 1 connections found
+INFO:__main__:
+================================================================================
+INFO:__main__:✅ MIGRATION COMPLETED SUCCESSFULLY!
+INFO:__main__:================================================================================
+INFO:__main__:
+⏱️  Total migration time: 1062.23 seconds
+INFO:__main__:📊 Summary:
+INFO:__main__:   - Employees migrated: 95500
+INFO:__main__:   - Connections migrated: 0
+INFO:__main__:   - Credentials migrated: 0

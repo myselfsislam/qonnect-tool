@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qonnect - Declare Connection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    <style>
+      /* Copy exact styles from your working declare.html */
+      .suggestions {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background-color: white;
+        border: 1px solid #d1d5db;
+        margin-top: 0.25rem;
+        z-index: 50;
+        max-height: 20rem;
+        overflow-y: auto;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        border-radius: 0.375rem;
+      }
+      .suggestion-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        width: 100%;
+        text-align: left;
+        padding: 0.75rem;
+        cursor: pointer;
+        background-color: transparent;
+        border: none;
+        color: #374151;
+      }
+      .suggestion-item:hover {
+        background-color: #f3f4f6;
+      }
+      /* Removed .hidden class - using Tailwind's responsive hidden instead */
+      .unified-card {
+        background-color: white;
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        transition: all 0.3s ease-in-out;
+        display: flex;
+        flex-direction: column;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        border: 2px solid #e5e7eb;
+      }
+      .unified-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 8px -1px rgb(0 0 0 / 0.1);
+      }
+      .google-border {
+        border: 1px solid transparent;
+        background: linear-gradient(white, white) padding-box,
+                    linear-gradient(45deg, #4285f4, #ea4335, #fbbc05, #34a853) border-box;
+      }
+      .qt-border {
+        border: 2px solid #5748c3;
+      }
+      .strength-btn {
+        font-weight: 500;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.75rem;
+        transition: all 0.2s;
+        border: 1px solid #d1d5db;
+        border-radius: 0.375rem;
+        background-color: white;
+        cursor: pointer;
+      }
+      .strength-btn:hover {
+        background-color: #f9fafb;
+      }
+      .strength-btn.active-weak {
+        background-color: #fee2e2;
+        color: #991b1b;
+        border-color: #fca5a5;
+      }
+      .strength-btn.active-medium {
+        background-color: #fef3c7;
+        color: #92400e;
+        border-color: #fcd34d;
+      }
+      .strength-btn.active-strong {
+        background-color: #dcfce7;
+        color: #166534;
+        border-color: #86efac;
+      }
+      .bg-primary {
+        background-color: #2a2559;
+      }
+      .text-primary {
+        color: #2a2559;
+      }
+      @keyframes glow-weak {
+        from { box-shadow: 0 0 10px #fca5a5; }
+        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+      }
+      @keyframes glow-medium {
+        from { box-shadow: 0 0 10px #fcd34d; }
+        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+      }
+      @keyframes glow-strong {
+        from { box-shadow: 0 0 10px #86efac; }
+        to { box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); }
+      }
+      .glow-weak { animation: glow-weak 0.8s ease-out; }
+      .glow-medium { animation: glow-medium 0.8s ease-out; }
+      .glow-strong { animation: glow-strong 0.8s ease-out; }
+      
+      /* Clean connection info styling - no icons */
+      .connection-info {
+        font-size: 0.65rem;
+        color: #666;
+        margin-top: 4px;
+        text-align: center;
+        background-color: #f8f9fa;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+<body class="bg-gray-50 text-gray-900">
+    <nav class="w-full p-3 md:p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
+        <div class="container mx-auto flex items-center justify-between">
+            <a href="/smartstakeholdersearch/" class="flex items-center gap-2 md:gap-5">
+                <i class="fas fa-project-diagram text-xl md:text-2xl text-white"></i>
+                <h1 class="text-lg md:text-2xl font-bold text-white">Qonnect</h1>
+            </a>
+            <div class="flex items-center gap-2 md:gap-4">
+                <a href="/smartstakeholdersearch/" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-home"></i>
+                    <span class="hidden md:inline">Home</span>
+                </a>
+                <a href="/smartstakeholdersearch/search" class="p-2 md:px-4 md:py-2 text-white hover:bg-white/10 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-magnifying-glass-chart"></i>
+                    <span class="hidden md:inline">Search</span>
+                </a>
+                <a href="/smartstakeholdersearch/logout" class="p-2 md:px-4 md:py-2 text-white hover:bg-red-600/90 bg-red-500 rounded-lg transition-all duration-200 flex items-center gap-2">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span class="hidden md:inline">Logout</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="w-full max-w-6xl mx-auto mt-12 p-4">
+      <div class="text-center">
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900">Declare a Connection</h2>
+        <p class="text-gray-600 mt-2">Search for a Google employee to view and manage your team's connections.</p>
+      </div>
+
+      <div class="flex justify-center my-8">
+        <div class="relative w-full max-w-md">
+          <div class="relative">
+            <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"></i>
+            <input type="text" id="searchInput" placeholder="Search Google Employees"
+                   class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+          <div id="suggestions" class="suggestions hidden">
+            <div id="suggestionsList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="mainContent" class="mt-8">
+        <div class="text-center text-gray-500 py-16">
+          <p>Search for a Google employee to begin.</p>
+        </div>
+      </div>
+
+      <div class="mt-8 flex justify-center">
+        <button
+          id="saveChangesBtn"
+          class="hidden bg-primary text-white text-sm font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-opacity-90 transition-all duration-300 flex items-center gap-2"
+        >
+          <i data-lucide="save" class="w-5 h-5"></i>
+          Save Changes
+        </button>
+      </div>
+
+      <!-- Simple success message area -->
+      <div id="successMessage" class="hidden mt-6 mx-auto max-w-md p-4 bg-green-100 border border-green-300 rounded-lg text-center">
+        <p class="text-green-800 font-medium">Connection saved successfully!</p>
+      </div>
+    </main>
+
+    <script>
+      // Global State
+      let googleEmployees = [];
+      let coreTeam = [];
+      let selectedGoogleEmployee = null;
+      let pendingChanges = {};
+      let existingConnections = {}; // NEW: Store existing connections from Google Sheets
+      let searchTimeout = null; // For debouncing search
+
+      // Performance: Add request cache to prevent duplicate API calls
+      const requestCache = new Map();
+      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+      async function cachedFetch(url) {
+        const now = Date.now();
+        if (requestCache.has(url)) {
+          const {data, timestamp} = requestCache.get(url);
+          if (now - timestamp < CACHE_TTL) {
+            console.log('📦 Cache hit:', url);
+            return data;
+          }
+        }
+
+        const response = await fetch(url);
+        const data = await response.json();
+        requestCache.set(url, {data, timestamp: now});
+        console.log('🌐 Cache miss, fetched:', url);
+        return data;
+      }
+
+      // Updated QT team members with correct details
+      const qtTeamData = [
+        {
+          ldap: 'lihis',
+          name: 'Lihi Segev',
+          email: 'lihis@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Executive Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=lihis"
+        },
+        {
+          ldap: 'a.bagade',
+          name: 'Abhijeet Bagade',
+          email: 'a.bagade@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=a.bagade"
+        },
+        {
+          ldap: 'omrinis',
+          name: 'Omri Nissim',
+          email: 'omrinis@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=omrinis"
+        },
+        {
+          ldap: 'kobi.kol',
+          name: 'Kobi Kol',
+          email: 'kobi.kol@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Associate Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=kobi.kol"
+        },
+        {
+          ldap: 'jillian.orrico',
+          name: 'Jillian OrRico',
+          email: 'jillian.orrico@qualitestgroup.com',
+          department: 'Sales',
+          designation: 'Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=jillian.orrico"
+        },
+        {
+          ldap: 'michael.bush',
+          name: 'Michael Bush',
+          email: 'michael.bush@qualitestgroup.com',
+          department: 'Account Management and Delivery',
+          designation: 'Associate Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=michael.bush"
+        },
+        {
+          ldap: 'mayank.arya',
+          name: 'Mayank Arya',
+          email: 'mayank.arya@Qualitest.com',
+          department: 'Account Management and Delivery',
+          designation: 'Associate Vice President',
+          company: 'Qualitest',
+          organisation: 'Qualitest',
+          connections: [],
+          avatar: "https://i.pravatar.cc/150?u=mayank.arya"
+        }
+      ];
+
+      // Optimized: Load existing connections with better error handling
+      async function loadExistingConnections(googleEmployee) {
+        try {
+          console.log(`🔍 Loading existing connections for ${googleEmployee.name}...`);
+
+          const response = await fetch('/smartstakeholdersearch/api/connections-from-sheets');
+          if (!response.ok) {
+            console.warn('Connections API unavailable');
+            return {};
+          }
+
+          const { connections = [] } = await response.json();
+          console.log(`📊 Processing ${connections.length} connections from sheets`);
+
+          const userConnections = processConnections(connections, googleEmployee);
+          console.log(`📋 Loaded ${Object.keys(userConnections).length} connections`);
+
+          return userConnections;
+        } catch (error) {
+          console.error('Error loading connections:', error.message);
+          return {};
+        }
+      }
+
+      // Helper function to process and map connections
+      function processConnections(connections, googleEmployee) {
+        const userConnections = {};
+        const ldapMapping = {
+          'lihi.segev': 'lihis',
+          'abhijeet.bagade': 'a.bagade',
+          'omri.nissim': 'omrinis'
+        };
+
+        connections.forEach(conn => {
+          const googleEmail = (conn['Google Employee Email'] || '').toLowerCase().trim();
+          const googleLdap = (conn['Google Employee LDAP'] || '').toLowerCase().trim();
+          const qtLdap = (conn['QT Employee LDAP'] || '').toLowerCase().trim();
+
+          // Check if this connection belongs to the current employee
+          const emailMatch = googleEmail === googleEmployee.email.toLowerCase();
+          const ldapMatch = googleLdap === googleEmployee.ldap.toLowerCase();
+
+          if (emailMatch || ldapMatch) {
+            const mappedQtLdap = ldapMapping[qtLdap] || qtLdap;
+
+            userConnections[mappedQtLdap] = {
+              strength: (conn['Connection Strength'] || '').toLowerCase().trim(),
+              timestamp: conn['Timestamp'] || conn['Date & Time'] || '',
+              qtName: conn['QT Employee Name'] || conn['QT Team Member'] || qtLdap,
+              originalQtLdap: qtLdap
+            };
+          }
+        });
+
+        return userConnections;
+      }
+
+      // Fetch Google employees with fallback data
+      async function fetchGoogleEmployees() {
+        try {
+          // Use cachedFetch for better performance
+          const apiData = await cachedFetch('/smartstakeholdersearch/api/google-employees');
+          if (apiData?.length) {
+            googleEmployees = apiData;
+            console.log(`✅ Loaded ${googleEmployees.length} employees from API`);
+            return;
+          }
+        } catch (error) {
+          console.warn('API unavailable, using fallback data');
+        }
+
+        // Fallback data for development/testing
+        googleEmployees = getFallbackEmployees();
+        console.log(`📋 Using ${googleEmployees.length} fallback employees`);
+      }
+
+      // Get fallback employee data
+      function getFallbackEmployees() {
+        return [
+          {
+            ldap: 'ashwink',
+            name: 'Ashwin Kumar',
+            email: 'ashwink@google.com',
+            department: 'Engineering',
+            designation: 'Senior Engineering Manager',
+            company: 'GOOGLE',
+            organisation: 'Google'
+          },
+          {
+            ldap: 'epersitz',
+            name: 'Ehud Persitz',
+            email: 'epersitz@google.com',
+            department: 'SLS',
+            designation: 'Sr. Program Manager, SLS',
+            company: 'GOOGLE',
+            organisation: 'Google'
+          },
+          {
+            ldap: 'john.smith',
+            name: 'John Smith',
+            email: 'john.smith@google.com',
+            department: 'Engineering',
+            designation: 'Software Engineer',
+            company: 'GOOGLE',
+            organisation: 'Google'
+          },
+          {
+            ldap: 'dgavish',
+            name: 'Dennis Gavish',
+            email: 'dgavish@google.com',
+            department: 'Engineering',
+            designation: 'Software Engineer',
+            company: 'GOOGLE',
+            organisation: 'Google'
+          }
+        ];
+      }
+
+      // Search Google employees with API fallback
+      async function searchGoogleEmployees(query) {
+        try {
+          // Use cachedFetch for better performance
+          const results = await cachedFetch(`/smartstakeholdersearch/api/search-google-employees?q=${encodeURIComponent(query)}`);
+          if (results?.length) {
+            console.log(`✅ API search: ${results.length} results for "${query}"`);
+            return results;
+          }
+        } catch (error) {
+          console.warn('Search API unavailable, using local search');
+        }
+
+        // Local search with comprehensive matching
+        return performLocalSearch(query);
+      }
+
+      // Perform local employee search
+      function performLocalSearch(query) {
+        const queryLower = query.toLowerCase().trim();
+        console.log(`🔍 Local search for: "${queryLower}"`);
+
+        const results = googleEmployees.filter(emp => {
+          const fields = [
+            emp.name?.toLowerCase(),
+            emp.email?.toLowerCase(),
+            emp.ldap?.toLowerCase(),
+            emp.designation?.toLowerCase()
+          ];
+
+          return fields.some(field => field?.includes(queryLower));
+        });
+
+        console.log(`📊 Local search: ${results.length} results found`);
+        return results;
+      }
+
+      // FIXED: Create employee card with proper existing connection display (no icons)
+      function createEmployeeCard(employee, isGoogleEmployeeCard = false) {
+        const card = document.createElement("div");
+
+        let bottomContent = "";
+        if (!isGoogleEmployeeCard && selectedGoogleEmployee) {
+          // Check for existing connection using the correct LDAP
+          const existingConn = existingConnections[employee.ldap];
+          const pendingStrength = pendingChanges[employee.ldap];
+          const currentStrength = pendingStrength || (existingConn ? existingConn.strength : '');
+          
+          // FIXED: Clean connection info without calendar icons
+          let connectionInfo = "";
+          if (existingConn && !pendingStrength) {
+            const date = existingConn.timestamp ? new Date(existingConn.timestamp).toLocaleDateString() : 'Previously';
+            connectionInfo = `<div class="connection-info">Previously: ${existingConn.strength.toUpperCase()} (${date})</div>`;
+          }
+
+          bottomContent = `
+            <div class="mt-3 pt-3 border-t border-gray-100">
+              <p class="text-xs font-medium text-gray-500 mb-2">
+                ${existingConn ? 'Update Connection:' : 'Set Connection:'}
+              </p>
+              <div class="flex gap-2 justify-center">
+                <button data-ldap="${employee.ldap}" data-strength="weak" class="strength-btn ${currentStrength === "weak" ? "active-weak" : ""}">Weak</button>
+                <button data-ldap="${employee.ldap}" data-strength="medium" class="strength-btn ${currentStrength === "medium" ? "active-medium" : ""}">Medium</button>
+                <button data-ldap="${employee.ldap}" data-strength="strong" class="strength-btn ${currentStrength === "strong" ? "active-strong" : ""}">Strong</button>
+              </div>
+              ${connectionInfo}
+            </div>`;
+        }
+
+        const borderClass = isGoogleEmployeeCard ? "google-border" : "qt-border";
+        // REMOVED: existing-connection class that added calendar icon
+        card.className = `unified-card w-full h-full ${borderClass}`;
+
+        card.innerHTML = `
+          <div class="flex-1 flex flex-col items-center text-center justify-center">
+            <div class="w-16 h-16 rounded-full mb-2 border-2 border-gray-300 shadow bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+              <span class="text-xl font-bold text-gray-600">${employee.name.split(' ').map(n => n[0]).join('').substring(0, 2)}</span>
+            </div>
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-primary">${employee.organisation || employee.company}</p>
+            <h4 class="font-bold text-md text-gray-800">${employee.name}</h4>
+            <p class="text-xs text-gray-500">${employee.designation}</p>
+            <p class="text-[10px] text-gray-400 mt-1 font-mono">${employee.ldap}</p>
+          </div>
+          ${bottomContent}`;
+
+        return card;
+      }
+
+      // Render connection interface for selected employee
+      async function renderConnectionInterface(googleEmployee) {
+        initializeRenderState(googleEmployee);
+        showLoadingState();
+
+        existingConnections = await loadExistingConnections(googleEmployee);
+        renderInterface();
+      }
+
+      // Initialize render state
+      function initializeRenderState(googleEmployee) {
+        selectedGoogleEmployee = googleEmployee;
+        pendingChanges = {};
+        console.log(`🎯 Loading interface for ${googleEmployee.name}`);
+      }
+
+      // Show loading state
+      function showLoadingState() {
+        const mainContent = document.getElementById("mainContent");
+        mainContent.innerHTML = `
+          <div class="text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+            <p class="mt-2 text-gray-500 text-sm">Loading connections...</p>
+          </div>`;
+      }
+
+      // Render the main interface
+      function renderInterface() {
+        const mainContent = document.getElementById("mainContent");
+        mainContent.innerHTML = "";
+
+        mainContent.appendChild(createSelectedEmployeeSection());
+        mainContent.appendChild(createQTTeamSection());
+        setupQTTeamInteractions();
+
+        console.log(`📊 Interface rendered: ${Object.keys(existingConnections).length} connections`);
+      }
+
+      // Create selected employee section
+      function createSelectedEmployeeSection() {
+        const container = document.createElement("div");
+        container.className = "mb-10 flex justify-center";
+
+        const googleCard = createEmployeeCard(selectedGoogleEmployee, true);
+        googleCard.classList.add("w-full", "max-w-xs", "mx-auto");
+        container.appendChild(googleCard);
+
+        return container;
+      }
+
+      // Create QT team section
+      function createQTTeamSection() {
+        const existingCount = Object.keys(existingConnections).length;
+        const section = document.createElement("div");
+
+        section.innerHTML = `
+          <h3 class="text-lg font-semibold text-gray-800 mb-2 text-center">Manage Connections with QT Team</h3>
+          <p class="text-sm text-gray-600 mb-4 text-center">
+            ${existingCount > 0 ? `${existingCount} existing connections found` : 'No existing connections found'}
+          </p>
+          <div id="qtTeamContainer" class="space-y-4"></div>`;
+
+        populateQTTeamContainer(section.querySelector('#qtTeamContainer'));
+        return section;
+      }
+
+      // Populate QT team container
+      function populateQTTeamContainer(container) {
+        coreTeam = qtTeamData;
+
+        if (coreTeam.length === 0) {
+          container.innerHTML = '<div class="text-center text-gray-500 py-8"><p>No QT team members found.</p></div>';
+          return;
+        }
+
+        container.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 justify-items-center">
+            ${coreTeam.map(() => '<div class="qt-member-card w-full max-w-xs"></div>').join('')}
+          </div>`;
+
+        // Add individual cards
+        const qtCards = container.querySelectorAll('.qt-member-card');
+        coreTeam.forEach((qtMember, index) => {
+          if (qtCards[index]) {
+            qtCards[index].appendChild(createEmployeeCard(qtMember, false));
+          }
+        });
+      }
+
+      // Setup QT team button interactions
+      function setupQTTeamInteractions() {
+        const qtContainer = document.getElementById("qtTeamContainer");
+        if (!qtContainer) return;
+
+        qtContainer.addEventListener('click', (e) => {
+          if (!e.target.classList.contains('strength-btn')) return;
+
+          const qtLdap = e.target.dataset.ldap;
+          const strength = e.target.dataset.strength;
+          const card = e.target.closest(".unified-card");
+
+          updateConnectionStrength(qtLdap, strength, e.target, card);
+        });
+      }
+
+      // Update connection strength
+      function updateConnectionStrength(qtLdap, strength, button, card) {
+        pendingChanges[qtLdap] = strength;
+
+        // Update button states
+        const strengthButtons = button.parentElement.querySelectorAll(".strength-btn");
+        strengthButtons.forEach(btn => btn.classList.remove("active-weak", "active-medium", "active-strong"));
+        button.classList.add(`active-${strength}`);
+
+        // Show save button
+        const saveBtn = document.getElementById("saveChangesBtn");
+        if (saveBtn) {
+          saveBtn.classList.remove("hidden");
+          saveBtn.style.display = "flex";
+        }
+
+        // Add visual feedback
+        card.classList.remove("glow-weak", "glow-medium", "glow-strong");
+        void card.offsetWidth; // Force reflow
+        card.classList.add(`glow-${strength}`);
+      }
+
+      // Setup search functionality
+      function setupSearch() {
+        const searchInput = document.getElementById("searchInput");
+        const suggestions = document.getElementById("suggestions");
+        const suggestionsList = document.getElementById("suggestionsList");
+
+        searchInput.addEventListener("input", async (e) => {
+          await handleSearchInput(e, suggestions, suggestionsList);
+        });
+
+        // Close suggestions when clicking outside
+        document.addEventListener("click", (e) => {
+          if (!e.target.closest(".relative")) {
+            suggestions.classList.add("hidden");
+          }
+        });
+      }
+
+      // Handle search input events
+      async function handleSearchInput(event, suggestions, suggestionsList) {
+        const searchTerm = event.target.value.trim();
+
+        if (searchTerm.length === 0) {
+          resetSearchState(suggestions, suggestionsList);
+          return;
+        }
+
+        if (searchTerm.length < 2) {
+          suggestions.classList.add("hidden");
+          return;
+        }
+
+        await performSearch(searchTerm, suggestions, suggestionsList);
+      }
+
+      // Reset search to initial state
+      function resetSearchState(suggestions, suggestionsList) {
+        suggestions.classList.add("hidden");
+        suggestionsList.innerHTML = "";
+
+        selectedGoogleEmployee = null;
+        pendingChanges = {};
+        existingConnections = {};
+
+        const mainContent = document.getElementById("mainContent");
+        mainContent.innerHTML = '<div class="text-center text-gray-500 py-16"><p>Search for a Google employee to begin.</p></div>';
+
+        const saveBtn = document.getElementById("saveChangesBtn");
+        saveBtn?.classList.add("hidden");
+      }
+
+      // Perform search and display results
+      async function performSearch(searchTerm, suggestions, suggestionsList) {
+        // Clear any existing search timeout
+        if (searchTimeout) {
+          clearTimeout(searchTimeout);
+        }
+
+        // Show loading state immediately
+        suggestionsList.innerHTML = '<div class="p-4 text-gray-500 text-sm">Searching...</div>';
+        suggestions.classList.remove("hidden");
+
+        // Debounce search by 500ms to reduce API calls
+        searchTimeout = setTimeout(async () => {
+          try {
+            // Use cached fetch and limit results to 20
+            const filteredEmployees = await searchGoogleEmployees(searchTerm);
+            const limitedResults = filteredEmployees.slice(0, 20);
+
+            suggestionsList.innerHTML = "";
+
+            if (limitedResults.length > 0) {
+              console.log(`📋 Showing ${limitedResults.length} of ${filteredEmployees.length} suggestions`);
+
+              limitedResults.forEach(employee => {
+                const item = createSuggestionItem(employee, searchTerm);
+                suggestionsList.appendChild(item);
+              });
+
+              suggestions.classList.remove("hidden");
+            } else {
+              console.log(`❌ No results for "${searchTerm}"`);
+              suggestionsList.innerHTML = '<div class="p-4 text-gray-500 text-sm">No results found</div>';
+              suggestions.classList.remove("hidden");
+            }
+          } catch (error) {
+            console.error('Search error:', error);
+            suggestionsList.innerHTML = '<div class="p-4 text-red-500 text-sm">Search failed. Please try again.</div>';
+            suggestions.classList.remove("hidden");
+          }
+        }, 500); // 500ms debounce delay
+      }
+
+      // Create suggestion item
+      function createSuggestionItem(employee, searchTerm) {
+        const item = document.createElement("button");
+        item.className = "suggestion-item";
+
+        const matchIndicator = getMatchIndicator(employee, searchTerm);
+        const initials = employee.name.split(' ').map(n => n[0]).join('').substring(0, 2);
+
+        item.innerHTML = `
+          <div class="w-10 h-10 rounded-full border-2 border-gray-300 bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+            <span class="text-sm font-bold text-gray-600">${initials}</span>
+          </div>
+          <div class="flex-1 min-w-0 text-left">
+            <div class="font-medium truncate">${employee.name}</div>
+            <div class="text-sm text-gray-500">${employee.designation}</div>
+            <div class="text-sm text-gray-500 truncate font-mono">${employee.ldap}</div>
+            ${matchIndicator}
+          </div>`;
+
+        item.addEventListener("click", () => {
+          selectEmployee(employee);
+        });
+
+        return item;
+      }
+
+      // Get match indicator for search result
+      function getMatchIndicator(employee, searchTerm) {
+        const queryLower = searchTerm.toLowerCase();
+
+        if (employee.ldap?.toLowerCase().includes(queryLower)) {
+          return '<span class="text-xs text-blue-600">LDAP match</span>';
+        }
+        if (employee.email?.toLowerCase().includes(queryLower)) {
+          return '<span class="text-xs text-green-600">Email match</span>';
+        }
+        if (employee.name?.toLowerCase().includes(queryLower)) {
+          return '<span class="text-xs text-purple-600">Name match</span>';
+        }
+
+        return '';
+      }
+
+      // Select employee from search results
+      function selectEmployee(employee) {
+        console.log(`🎯 Selected: ${employee.name} (${employee.ldap})`);
+
+        const searchInput = document.getElementById("searchInput");
+        const suggestions = document.getElementById("suggestions");
+
+        searchInput.value = employee.name;
+        suggestions.classList.add("hidden");
+
+        renderConnectionInterface(employee);
+      }
+
+      function setupSaveButton() {
+        const saveBtn = document.getElementById("saveChangesBtn");
+        if (!saveBtn) return;
+
+        saveBtn.addEventListener("click", async (e) => {
+          e.preventDefault();
+          
+          const changesCount = Object.keys(pendingChanges).length;
+          if (changesCount === 0) {
+            // Show simple warning message
+            const successMessage = document.getElementById('successMessage');
+            const messageText = successMessage.querySelector('p');
+
+            messageText.textContent = 'No changes to save!';
+            successMessage.className = 'mt-6 mx-auto max-w-md p-4 bg-yellow-100 border border-yellow-300 rounded-lg text-center';
+            successMessage.classList.remove('hidden');
+
+            // Hide after 3 seconds
+            setTimeout(() => {
+              successMessage.classList.add('hidden');
+              successMessage.className = 'hidden mt-6 mx-auto max-w-md p-4 bg-green-100 border border-green-300 rounded-lg text-center';
+            }, 3000);
+            return;
+          }
+
+          // Show loading state
+          saveBtn.disabled = true;
+          const originalText = saveBtn.innerHTML;
+          saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin w-5 h-5"></i> Saving to Google Sheets...';
+
+          try {
+            const payload = {
+              googleLdap: selectedGoogleEmployee.ldap,
+              connections: pendingChanges,
+              declaredBy: 'Qonnect User',
+              timestamp: new Date().toISOString()
+            };
+
+            console.log('Saving to Google Sheets:', payload);
+
+            const response = await fetch('/smartstakeholdersearch/api/batch-update-connections', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+
+            const result = await response.json();
+            console.log('Save result:', result);
+
+            if (response.ok && result.success) {
+              // Show simple success message
+              const successMessage = document.getElementById('successMessage');
+              const messageText = successMessage.querySelector('p');
+
+              const message = result.written_to_sheets
+                ? `Successfully saved ${result.updated_count} connection(s) to Google Sheets!`
+                : `Saved ${result.updated_count} connection(s) locally.`;
+
+              messageText.textContent = message;
+              successMessage.classList.remove('hidden');
+
+              // Hide the success message after 5 seconds
+              setTimeout(() => {
+                successMessage.classList.add('hidden');
+              }, 5000);
+              
+              // Clear pending changes and refresh the interface to show updated connections
+              pendingChanges = {};
+              saveBtn.classList.add("hidden");
+              
+              // Refresh the connection interface to show the newly saved connections
+              setTimeout(() => {
+                renderConnectionInterface(selectedGoogleEmployee);
+              }, 1000);
+              
+            } else {
+              throw new Error(result.error || `Server responded with status ${response.status}`);
+            }
+            
+          } catch (error) {
+            console.error('Save error:', error);
+
+            // Show simple error message
+            const successMessage = document.getElementById('successMessage');
+            const messageText = successMessage.querySelector('p');
+
+            messageText.textContent = `Failed to save connections: ${error.message}`;
+            successMessage.className = 'mt-6 mx-auto max-w-md p-4 bg-red-100 border border-red-300 rounded-lg text-center';
+            successMessage.classList.remove('hidden');
+
+            // Hide after 5 seconds
+            setTimeout(() => {
+              successMessage.classList.add('hidden');
+              successMessage.className = 'hidden mt-6 mx-auto max-w-md p-4 bg-green-100 border border-green-300 rounded-lg text-center';
+            }, 5000);
+          } finally {
+            // Reset button state
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalText;
+            lucide.createIcons();
+          }
+        });
+      }
+
+      async function init() {
+        console.log('🚀 Initializing Enhanced Declare page...');
+        
+        // Initialize QT team data
+        coreTeam = qtTeamData;
+        
+        // Load Google employees
+        await fetchGoogleEmployees();
+        
+        // Setup functionality
+        setupSearch();
+        setupSaveButton();
+        lucide.createIcons();
+        
+        console.log('✅ Initialized with:', googleEmployees.length, 'Google employees,', coreTeam.length, 'QT team members');
+      }
+
+      // Initialize when DOM is ready
+      document.addEventListener("DOMContentLoaded", init);
+    </script>
+  </body>
+</html>

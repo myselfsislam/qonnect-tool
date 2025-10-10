@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qonnect - Organization Hierarchy Chart</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+    <style>
+        .employee-card {
+            position: relative;
+            width: 200px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .employee-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+
+        .google-card {
+            border: 1px solid transparent;
+            background: linear-gradient(white, white) padding-box,
+                        linear-gradient(45deg, #4285f4, #ea4335, #fbbc05, #34a853) border-box;
+        }
+
+        .qt-card {
+            border: 2px solid #5748c3;
+        }
+
+        .connector-line {
+            width: 2px;
+            height: 40px;
+            background: linear-gradient(to bottom, #e5e7eb, #9ca3af);
+            margin: 20px auto;
+        }
+
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 50;
+        }
+
+        .suggestion-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background-color 0.2s ease;
+            cursor: pointer;
+        }
+
+        .suggestion-item:hover {
+            background-color: #f9fafb;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-900">
+    <nav class="w-full p-4 border-b border-gray-200 bg-[#212559] backdrop-blur-sm sticky top-0 z-40">
+        <div class="container mx-auto flex items-center justify-between">
+            <a href="/" class="flex items-center gap-5">
+                <i class="fas fa-project-diagram text-2xl text-primary text-white"></i>
+                <h1 class="text-2xl font-bold text-white">Qonnect</h1>
+            </a>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl p-8 mx-auto">
+        <div class="text-center mb-8">
+            <h1 class="text-2xl font-bold">Organization Hierarchy Chart</h1>
+            <p class="text-gray-600 mt-2">Search for Google employees to find their connections to the QT team.</p>
+        </div>
+
+        <div class="flex justify-center mb-8">
+            <div class="relative w-full max-w-md">
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4"></i>
+                    <input type="text" id="searchInput" placeholder="Search Google employees..."
+                           class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div id="suggestions" class="suggestions hidden"></div>
+            </div>
+        </div>
+
+        <div id="mainContent">
+            <div class="text-center text-gray-500 py-16">
+                <p>Search and select a Google employee to find their connections to the QT team.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let googleEmployees = [];
+        let coreTeam = [];
+        let selectedEmployee = null;
+
+        async function loadFlaskData() {
+            try {
+                console.log('Loading data from Flask API...');
+
+                const googleResponse = await fetch('/smartstakeholdersearch/api/google-employees');
+                if (googleResponse.ok) {
+                    const data = await googleResponse.json();
+                    googleEmployees = data.map(emp => ({
+                        ldap: emp.ldap,
+                        email: emp.email || emp.ldap + '@google.com',
+                        avatar: emp['MOMA Photo URL'] || emp.avatar || null,
+                        name: emp.name,
+                        company: emp.company || "GOOGLE",
+                        designation: emp.designation,
+                        organisation: emp.organisation || emp.department || "Google",
+                        manager: emp.manager || null,
+                    }));
+                }
+
+                const qtResponse = await fetch('/smartstakeholdersearch/api/qt-team');
+                if (qtResponse.ok) {
+                    const qtData = await qtResponse.json();
+                    if (qtData && qtData.length > 0) {
+                        coreTeam = qtData.map(emp => ({
+                            ldap: emp.ldap,
+                            email: emp.email || emp.ldap + '@qualitestgroup.com',
+                            avatar: emp.avatar || null,
+                            name: emp.name,
+                            company: emp.company || "QT",
+                            designation: emp.designation,
+                            organisation: emp.organisation || emp.department || "QT",
+                        }));
+                    }
+                }
+
+                console.log('API data loaded successfully');
+
+            } catch (error) {
+                console.error('Error loading data from API:', error.message);
+            }
+        }
+
+        function getInitials(name) {
+            if (!name) return 'NA';
+            return name.split(' ').map(word => word.charAt(0).toUpperCase()).join('').substring(0, 2);
+        }
+
+        function isValidImageUrl(url) {
+            return url && url.trim() !== '' && (url.startsWith('http://') || url.startsWith('https://'));
+        }
+
+        function createEmployeeCard(employee) {
+            if (!employee) return document.createElement("div");
+
+            const card = document.createElement("div");
+            const isQt = employee.company === 'QT';
+            card.className = `employee-card ${isQt ? 'qt-card' : 'google-card'}`;
+
+            let avatarHtml = '';
+            if (isValidImageUrl(employee.avatar)) {
+                avatarHtml = `<img src="${employee.avatar}" alt="${employee.name}" class="w-16 h-16 rounded-full mx-auto mb-3 border-2 border-gray-300 shadow object-cover" onError="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="w-16 h-16 rounded-full mx-auto mb-3 border-2 border-gray-300 shadow bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center" style="display:none;">
+                  <span class="text-xl font-bold text-gray-600">${getInitials(employee.name)}</span>
+                </div>`;
+            } else {
+                avatarHtml = `<div class="w-16 h-16 rounded-full mx-auto mb-3 border-2 border-gray-300 shadow bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
+                  <span class="text-xl font-bold text-gray-600">${getInitials(employee.name)}</span>
+                </div>`;
+            }
+
+            card.innerHTML = `
+                ${avatarHtml}
+                <h4 class="font-bold text-lg text-gray-800 mb-1">${employee.name}</h4>
+                <p class="text-sm text-gray-600 mb-2">${employee.designation}</p>
+                <p class="text-xs text-gray-500">${employee.organisation}</p>
+                <p class="text-xs text-gray-400 mt-2 font-mono">${employee.ldap}</p>
+            `;
+
+            return card;
+        }
+
+        async function renderConnectionPaths(employee) {
+            console.log('Rendering connection paths for:', employee);
+
+            const content = document.createElement("div");
+            content.className = "bg-gray-50 min-h-screen p-8";
+
+            // Load declared connections
+            try {
+                const connectionsResponse = await fetch(`/smartstakeholdersearch/api/connections/${employee.ldap}`);
+                const declaredConnections = await connectionsResponse.json();
+                employee.declared_connections = declaredConnections || [];
+            } catch (error) {
+                console.warn('Failed to load connections for', employee.ldap, ':', error);
+                employee.declared_connections = [];
+            }
+
+            // Check if we have any connections to show
+            const hasConnections = employee.declared_connections && employee.declared_connections.length > 0;
+
+            if (hasConnections) {
+                // Create simple layout - searched employee at top, connected QT employees below
+                const container = document.createElement("div");
+                container.className = "flex flex-col items-center gap-8";
+
+                // Display the searched employee
+                const searchedEmployeeCard = createEmployeeCard(employee);
+                container.appendChild(searchedEmployeeCard);
+
+                // Simple connector line
+                const connector = document.createElement("div");
+                connector.className = "connector-line";
+                container.appendChild(connector);
+
+                // QT connections title
+                const title = document.createElement("h3");
+                title.className = "text-xl font-semibold text-gray-700 mb-6";
+                title.textContent = "Connected QT Team Members";
+                container.appendChild(title);
+
+                // Display connected QT employees in a simple grid
+                const qtConnectionsGrid = document.createElement("div");
+                qtConnectionsGrid.className = "flex flex-wrap justify-center gap-6 max-w-4xl";
+
+                employee.declared_connections.forEach(conn => {
+                    let qtEmployee = coreTeam.find(emp => emp.ldap === conn.qtLdap);
+                    if (!qtEmployee) {
+                        qtEmployee = {
+                            ldap: conn.qtLdap,
+                            name: conn.qtLdap.replace('.', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                            designation: 'QT Team Member',
+                            company: 'QT',
+                            organisation: 'QT',
+                            avatar: null
+                        };
+                    }
+
+                    const card = createEmployeeCard(qtEmployee);
+                    qtConnectionsGrid.appendChild(card);
+                });
+
+                container.appendChild(qtConnectionsGrid);
+                content.appendChild(container);
+            } else {
+                showNoConnectionsMessage(content, employee);
+            }
+
+            return content;
+        }
+
+        function showNoConnectionsMessage(content, employee) {
+            console.log('No connections found, showing no connections message');
+
+            const container = document.createElement("div");
+            container.className = "flex flex-col items-center gap-8";
+
+            // Display the searched employee
+            const searchedEmployeeCard = createEmployeeCard(employee);
+            container.appendChild(searchedEmployeeCard);
+
+            // No connections message
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "text-center max-w-md";
+            messageDiv.innerHTML = `
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+                    <h3 class="font-semibold text-yellow-900 mb-2">No QT Connections</h3>
+                    <p class="text-sm text-yellow-800">No connections found between ${employee.name} and the QT team. Consider exploring their network or building new connections.</p>
+                </div>
+            `;
+            container.appendChild(messageDiv);
+
+            content.appendChild(container);
+        }
+
+        async function showSelectedEmployee() {
+            if (!selectedEmployee) return;
+            const mainContent = document.getElementById("mainContent");
+
+            mainContent.innerHTML = '<div class="text-center py-16"><div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div><p class="mt-4 text-gray-500">Loading connection paths...</p></div>';
+
+            try {
+                const pathContent = await renderConnectionPaths(selectedEmployee);
+                mainContent.innerHTML = "";
+                mainContent.appendChild(pathContent);
+                lucide.createIcons();
+            } catch (error) {
+                console.error('Error showing selected employee:', error);
+                mainContent.innerHTML = '<div class="text-center py-16"><p class="text-red-500">Error loading connection paths</p><p class="text-sm text-gray-500 mt-2">' + error.message + '</p></div>';
+            }
+        }
+
+        function setupSearch() {
+            const searchInput = document.getElementById("searchInput");
+            const suggestions = document.getElementById("suggestions");
+
+            searchInput.addEventListener("input", async (e) => {
+                const searchTerm = e.target.value.trim();
+
+                if (searchTerm.length === 0) {
+                    suggestions.classList.add("hidden");
+                    selectedEmployee = null;
+                    resetToOriginalState();
+                    return;
+                }
+
+                if (searchTerm.length < 2) {
+                    suggestions.innerHTML = "";
+                    suggestions.classList.add("hidden");
+                    return;
+                }
+
+                // Use the search API endpoint to get results
+                let filtered = [];
+                try {
+                    const response = await fetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(searchTerm)}`);
+                    if (!response.ok) {
+                        throw new Error('Search API failed');
+                    }
+                    filtered = await response.json();
+                    filtered = filtered.slice(0, 20);
+
+                    // Map API results to expected format
+                    filtered = filtered.map(emp => ({
+                        ...emp,
+                        avatar: emp.avatar || null,
+                        declared_connections: emp.declared_connections || []
+                    }));
+                } catch (error) {
+                    console.error('Search API error, falling back to client-side filter:', error);
+                    // Fallback to client-side filtering
+                    filtered = googleEmployees
+                        .filter(emp =>
+                            emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            emp.ldap.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            emp.designation.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .slice(0, 20);
+                }
+
+                suggestions.innerHTML = "";
+                if (filtered.length > 0) {
+                    filtered.forEach((employee) => {
+                        const item = document.createElement("button");
+                        item.className = "suggestion-item";
+
+                        const avatarHtml = isValidImageUrl(employee.avatar)
+                            ? '<img src="' + employee.avatar + '" alt="' + employee.name + '" class="w-10 h-10 rounded-full object-cover" onError="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm" style="display:none;">' + getInitials(employee.name) + '</div>'
+                            : '<div class="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm">' + getInitials(employee.name) + '</div>';
+
+                        // Add connections info if available
+                        const connectionCount = employee.declared_connections ? employee.declared_connections.length : 0;
+                        const connectionsText = connectionCount > 0
+                            ? `<div class="text-xs text-green-600 font-medium">${connectionCount} connection${connectionCount > 1 ? 's' : ''}</div>`
+                            : '';
+
+                        item.innerHTML = '<div class="flex items-center space-x-3 flex-1">' + avatarHtml + '<div class="flex-1 text-left"><div class="font-medium">' + employee.name + '</div><div class="text-sm text-gray-500">' + employee.designation + '</div><div class="text-xs text-gray-400">' + employee.ldap + '</div>' + connectionsText + '</div></div>';
+
+                        item.addEventListener("click", async () => {
+                            searchInput.value = employee.name;
+                            suggestions.classList.add("hidden");
+                            selectedEmployee = employee;
+                            await showSelectedEmployee();
+                        });
+                        suggestions.appendChild(item);
+                    });
+                    suggestions.classList.remove("hidden");
+                } else {
+                    suggestions.classList.add("hidden");
+                }
+            });
+
+            document.addEventListener("click", (e) => {
+                if (!e.target.closest(".relative")) suggestions.classList.add("hidden");
+            });
+        }
+
+        function resetToOriginalState() {
+            const mainContent = document.getElementById("mainContent");
+            mainContent.innerHTML = '<div class="text-center text-gray-500 py-16"><p>Search and select a Google employee to find their connections to the QT team.</p></div>';
+            selectedEmployee = null;
+        }
+
+        async function init() {
+            console.log('Initializing Qonnect...');
+            await loadFlaskData();
+
+            console.log('Data loaded:');
+            console.log('- Google employees:', googleEmployees.length);
+            console.log('- QT team:', coreTeam.length);
+
+            setupSearch();
+            lucide.createIcons();
+            console.log('Initialization complete!');
+        }
+
+        document.addEventListener("DOMContentLoaded", init);
+    </script>
+</body>
+</html>
