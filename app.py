@@ -75,6 +75,15 @@ GOOGLE_SHEETS_CONFIG = {
     'memory_cleanup_interval': 5000
 }
 
+# JSON Data Configuration - Hybrid Approach (for faster performance)
+JSON_DATA_CONFIG = {
+    'enabled': os.environ.get('USE_JSON_DATA', 'false').lower() == 'true',
+    'local_dir': os.environ.get('JSON_DATA_DIR', '/tmp/qonnect_data'),
+    'gcs_bucket': os.environ.get('JSON_GCS_BUCKET', 'smartstakeholdersearch-data'),
+    'use_gcs': os.environ.get('USE_GCS', 'false').lower() == 'true',
+    'fallback_to_sheets': True,  # Always fall back to Sheets if JSON fails
+}
+
 # Global data storage - Optimized
 employees_data = []
 google_employees = []
@@ -147,6 +156,157 @@ def save_to_disk_cache(cache_key, data):
             pickle.dump(data, f)
     except Exception as e:
         logger.debug(f"Error saving to disk cache: {e}")
+
+# JSON Data Loading Functions (Hybrid Approach)
+def load_json_from_local(filename):
+    """Load JSON data from local filesystem"""
+    try:
+        filepath = os.path.join(JSON_DATA_CONFIG['local_dir'], filename)
+        if not os.path.exists(filepath):
+            logger.debug(f"Local JSON file not found: {filepath}")
+            return None
+
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        # Check if data is fresh (within last 48 hours)
+        if 'last_updated' in data:
+            last_updated = datetime.fromisoformat(data['last_updated'])
+            age_hours = (datetime.now() - last_updated).total_seconds() / 3600
+            if age_hours > 48:
+                logger.warning(f"⚠️ Local JSON data is {age_hours:.1f} hours old (stale)")
+
+        logger.info(f"✅ Loaded {filename} from local filesystem ({len(json.dumps(data))} bytes)")
+        return data
+
+    except Exception as e:
+        logger.error(f"Error loading local JSON {filename}: {e}")
+        return None
+
+
+def load_json_from_gcs(filename):
+    """Load JSON data from Google Cloud Storage"""
+    try:
+        from google.cloud import storage
+
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(JSON_DATA_CONFIG['gcs_bucket'])
+        blob = bucket.blob(filename)
+
+        if not blob.exists():
+            logger.debug(f"GCS file not found: {filename}")
+            return None
+
+        json_string = blob.download_as_text()
+        data = json.loads(json_string)
+
+        logger.info(f"☁️ Loaded {filename} from Cloud Storage ({len(json_string)} bytes)")
+        return data
+
+    except ImportError:
+        logger.warning("google-cloud-storage not installed, cannot use GCS")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading from GCS {filename}: {e}")
+        return None
+
+
+def load_json_data(filename):
+    """
+    Load JSON data with fallback strategy:
+    1. Try Cloud Storage (if enabled)
+    2. Try local filesystem
+    3. Return None (caller should fall back to Google Sheets)
+    """
+    data = None
+
+    # Try Cloud Storage first (if enabled)
+    if JSON_DATA_CONFIG['use_gcs']:
+        data = load_json_from_gcs(filename)
+        if data:
+            return data
+
+    # Try local filesystem
+    data = load_json_from_local(filename)
+    if data:
+        return data
+
+    logger.debug(f"No JSON data found for {filename}, will fall back to Google Sheets")
+    return None
+
+
+def load_employees_from_json():
+    """Load employee data from JSON with fallback to Google Sheets"""
+    if not JSON_DATA_CONFIG['enabled']:
+        logger.debug("JSON data source disabled, using Google Sheets")
+        return None
+
+    try:
+        logger.info("📂 Attempting to load employees from JSON...")
+        json_data = load_json_data('employees.json')
+
+        if not json_data or 'employees' not in json_data:
+            logger.warning("Invalid or missing employees data in JSON")
+            return None
+
+        employees = json_data['employees']
+        stats = json_data.get('stats', {})
+        last_updated = json_data.get('last_updated', 'Unknown')
+
+        logger.info(f"✅ Loaded {len(employees)} employees from JSON (last updated: {last_updated})")
+        return employees, stats
+
+    except Exception as e:
+        logger.error(f"Error loading employees from JSON: {e}")
+        return None
+
+
+def load_connections_from_json():
+    """Load connections data from JSON with fallback to Google Sheets"""
+    if not JSON_DATA_CONFIG['enabled']:
+        logger.debug("JSON data source disabled, using Google Sheets")
+        return None
+
+    try:
+        logger.info("🔗 Attempting to load connections from JSON...")
+        json_data = load_json_data('connections.json')
+
+        if not json_data or 'connections' not in json_data:
+            logger.warning("Invalid or missing connections data in JSON")
+            return None
+
+        connections = json_data['connections']
+        last_updated = json_data.get('last_updated', 'Unknown')
+
+        logger.info(f"✅ Loaded {len(connections)} connections from JSON (last updated: {last_updated})")
+        return connections
+
+    except Exception as e:
+        logger.error(f"Error loading connections from JSON: {e}")
+        return None
+
+
+def load_credentials_from_json():
+    """Load credentials data from JSON with fallback to Google Sheets"""
+    if not JSON_DATA_CONFIG['enabled']:
+        logger.debug("JSON data source disabled, using Google Sheets")
+        return None
+
+    try:
+        logger.info("🔐 Attempting to load credentials from JSON...")
+        json_data = load_json_data('credentials.json')
+
+        if not json_data or 'credentials' not in json_data:
+            logger.warning("Invalid or missing credentials data in JSON")
+            return None
+
+        credentials = json_data['credentials']
+        logger.info(f"✅ Loaded {len(credentials)} credentials from JSON")
+        return credentials
+
+    except Exception as e:
+        logger.error(f"Error loading credentials from JSON: {e}")
+        return None
 
 # Application startup optimization - preload data
 @lru_cache(maxsize=1)
@@ -244,12 +404,17 @@ def get_cached_connections_data():
         logger.debug(f"📋 Using cached connections data ({len(cached_connections_data)} records)")
         return cached_connections_data
 
-    # Cache is stale or doesn't exist, fetch fresh data from Google Sheets
+    # Cache is stale or doesn't exist, fetch fresh data
     try:
-        logger.debug("🔄 Refreshing connections cache from Google Sheets...")
-
-        # Get all connections from Google Sheets using internal function
-        records = _read_connections_from_sheets_internal()
+        # Try loading from JSON first (hybrid approach for faster loading)
+        json_connections = load_connections_from_json()
+        if json_connections:
+            logger.info(f"🚀 Loaded {len(json_connections)} connections from JSON (FAST PATH)")
+            records = json_connections
+        else:
+            # Fall back to Google Sheets if JSON not available
+            logger.debug("🔄 Refreshing connections cache from Google Sheets...")
+            records = _read_connections_from_sheets_internal()
 
         cached_connections_data = records if records else []
         connections_cache_time = current_time
@@ -257,14 +422,14 @@ def get_cached_connections_data():
         # Save to disk cache
         save_to_disk_cache('connections_data', cached_connections_data)
 
-        logger.debug(f"✅ Cached {len(cached_connections_data)} connections records from Google Sheets (memory + disk)")
+        logger.debug(f"✅ Cached {len(cached_connections_data)} connections records (memory + disk)")
         return cached_connections_data
 
     except Exception as e:
         logger.error(f"❌ Error refreshing connections cache: {e}")
         # Return stale cache if available, otherwise empty list
         if cached_connections_data is not None:
-            logger.warning("⚠️ Using stale cache due to Google Sheets error")
+            logger.warning("⚠️ Using stale cache due to error")
             return cached_connections_data
         return []
 
@@ -925,9 +1090,15 @@ def load_google_sheets_data_optimized():
             employees_data = global_employees_cache
             return True
 
-        logger.debug("Loading Google Sheets data with optimizations...")
-
-        employees, stats = processor.process_google_sheets_data_optimized()
+        # Try loading from JSON first (hybrid approach for faster loading)
+        json_result = load_employees_from_json()
+        if json_result:
+            employees, stats = json_result
+            logger.info(f"🚀 Loaded {len(employees)} employees from JSON (FAST PATH)")
+        else:
+            # Fall back to Google Sheets if JSON not available
+            logger.debug("Loading Google Sheets data with optimizations...")
+            employees, stats = processor.process_google_sheets_data_optimized()
         
         if not employees:
             logger.error("No employee data processed")
@@ -1117,8 +1288,17 @@ def get_employee_hierarchy(employee_ldap):
 
 # Authentication Functions
 def get_credentials_from_sheet():
-    """Get credentials from Google Sheets 'Credentials' tab"""
+    """Get credentials from Google Sheets 'Credentials' tab (or JSON)"""
     try:
+        # Try loading from JSON first (hybrid approach for faster loading)
+        json_credentials = load_credentials_from_json()
+        if json_credentials:
+            logger.info(f"🚀 Loaded {len(json_credentials)} credentials from JSON (FAST PATH)")
+            return json_credentials
+
+        # Fall back to Google Sheets if JSON not available
+        logger.debug("Loading credentials from Google Sheets...")
+
         # Get credentials data from Google Sheets
         connector = OptimizedGoogleSheetsConnector(GOOGLE_SHEETS_CONFIG)
 
@@ -1898,9 +2078,134 @@ def get_employee_details(employee_id):
         })
         
         return jsonify(employee_details)
-        
+
     except Exception as e:
         logger.error(f"Error getting employee details: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@bp.route('/api/employee/<employee_ldap>/connections')
+def get_employee_connections_optimized(employee_ldap):
+    """OPTIMIZED: Get all connections (direct + transitive) for an employee in one call"""
+    try:
+        employee = get_employee_by_ldap(employee_ldap)
+        if not employee:
+            return jsonify({'error': 'Employee not found'}), 404
+
+        # Initialize result structure
+        result = {
+            'ldap': employee_ldap,
+            'name': employee.get('name', ''),
+            'organisation': employee.get('organisation', ''),
+            'direct_connections': [],
+            'transitive_connections': [],
+            'manager_chain': [],
+            'total_connections': 0
+        }
+
+        # Get connections data
+        connections_data = get_cached_connections_data()
+
+        # Build lookup maps for faster access
+        connections_by_google = {}
+        connections_by_qt = {}
+
+        for conn in connections_data:
+            google_ldap = conn.get('Google Employee', '').strip().lower()
+            qt_ldap = conn.get('QT Employee', '').strip().lower()
+
+            if google_ldap:
+                if google_ldap not in connections_by_google:
+                    connections_by_google[google_ldap] = []
+                if qt_ldap:
+                    connections_by_google[google_ldap].append(qt_ldap)
+
+            if qt_ldap:
+                if qt_ldap not in connections_by_qt:
+                    connections_by_qt[qt_ldap] = []
+                if google_ldap:
+                    connections_by_qt[qt_ldap].append(google_ldap)
+
+        # Get manager chain
+        hierarchy = get_employee_hierarchy(employee_ldap)
+        if hierarchy and hierarchy.get('manager_chain'):
+            result['manager_chain'] = [
+                {
+                    'ldap': mgr.get('ldap'),
+                    'name': mgr.get('name'),
+                    'designation': mgr.get('designation'),
+                    'avatar': mgr.get('avatar')
+                }
+                for mgr in hierarchy['manager_chain']
+            ]
+
+        # Determine if this is Google or QT employee
+        is_google = employee.get('organisation', '').lower() == 'google'
+        is_qt = employee.get('organisation', '').lower() == 'qualitest'
+
+        # Find direct connections
+        if is_google:
+            # Google employee - find QT employees connected to them
+            qt_ldaps = connections_by_google.get(employee_ldap.lower(), [])
+            for qt_ldap in qt_ldaps:
+                qt_emp = get_employee_by_ldap(qt_ldap)
+                if qt_emp:
+                    result['direct_connections'].append({
+                        'ldap': qt_emp.get('ldap'),
+                        'name': qt_emp.get('name'),
+                        'designation': qt_emp.get('designation'),
+                        'organisation': qt_emp.get('organisation'),
+                        'avatar': qt_emp.get('avatar'),
+                        'connection_type': 'direct'
+                    })
+
+        elif is_qt:
+            # QT employee - find Google employees connected to them
+            google_ldaps = connections_by_qt.get(employee_ldap.lower(), [])
+            for google_ldap in google_ldaps:
+                google_emp = get_employee_by_ldap(google_ldap)
+                if google_emp:
+                    result['direct_connections'].append({
+                        'ldap': google_emp.get('ldap'),
+                        'name': google_emp.get('name'),
+                        'designation': google_emp.get('designation'),
+                        'organisation': google_emp.get('organisation'),
+                        'avatar': google_emp.get('avatar'),
+                        'connection_type': 'direct'
+                    })
+
+        # Find transitive connections (through manager chain)
+        transitive_qt_employees = set()
+
+        if is_google:
+            # For Google employees: check if any manager has QT connections
+            for manager in hierarchy.get('manager_chain', [])[:5]:  # Limit to 5 levels
+                mgr_ldap = manager.get('ldap', '').lower()
+                qt_ldaps = connections_by_google.get(mgr_ldap, [])
+
+                for qt_ldap in qt_ldaps:
+                    # Skip if already in direct connections
+                    if qt_ldap not in [dc['ldap'].lower() for dc in result['direct_connections']]:
+                        if qt_ldap not in transitive_qt_employees:
+                            transitive_qt_employees.add(qt_ldap)
+                            qt_emp = get_employee_by_ldap(qt_ldap)
+                            if qt_emp:
+                                result['transitive_connections'].append({
+                                    'ldap': qt_emp.get('ldap'),
+                                    'name': qt_emp.get('name'),
+                                    'designation': qt_emp.get('designation'),
+                                    'organisation': qt_emp.get('organisation'),
+                                    'avatar': qt_emp.get('avatar'),
+                                    'connection_type': 'transitive',
+                                    'via_manager': manager.get('name'),
+                                    'via_manager_ldap': mgr_ldap
+                                })
+
+        result['total_connections'] = len(result['direct_connections']) + len(result['transitive_connections'])
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error getting connections for {employee_ldap}: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 @bp.route('/api/departments')

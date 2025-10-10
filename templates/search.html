@@ -601,20 +601,8 @@
 
         async function loadFlaskData() {
             try {
-                const googleResponse = await fetch('/smartstakeholdersearch/api/google-employees');
-                if (googleResponse.ok) {
-                    const data = await googleResponse.json();
-                    googleEmployees = data.map(emp => ({
-                        ldap: emp.ldap,
-                        email: emp.email || emp.ldap + '@google.com',
-                        avatar: emp['MOMA Photo URL'] || emp.avatar || null,
-                        name: emp.name,
-                        company: emp.company || "GOOGLE",
-                        designation: emp.designation,
-                        organisation: emp.organisation || emp.department || "Google",
-                        manager: emp.manager || null,
-                    }));
-                }
+                // Removed google-employees loading (33MB unused data) for faster page load
+                // Google employees are now loaded on-demand via search API
 
                 const qtResponse = await fetch('/smartstakeholdersearch/api/qt-team');
                 if (qtResponse.ok) {
