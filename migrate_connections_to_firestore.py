@@ -12,6 +12,48 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def clear_connections(db):
+    """Clear all existing connections from Firestore"""
+    print("\n" + "=" * 80)
+    print("🧹 CLEARING EXISTING CONNECTIONS FROM FIRESTORE")
+    print("=" * 80)
+
+    try:
+        # Get all connections
+        connections_ref = db.collection('connections')
+        docs = list(connections_ref.stream())
+
+        if len(docs) == 0:
+            print("✅ No existing connections to clear")
+            return True
+
+        # Delete in batches
+        batch = db.batch()
+        count = 0
+
+        for doc in docs:
+            batch.delete(doc.reference)
+            count += 1
+
+            # Commit batch every 500 deletions
+            if count % 500 == 0:
+                batch.commit()
+                batch = db.batch()
+                print(f"  Deleted {count} connections...")
+
+        # Commit remaining deletions
+        if count % 500 != 0:
+            batch.commit()
+
+        print(f"✅ Successfully deleted {count} connections from Firestore\n")
+        return True
+
+    except Exception as e:
+        print(f"❌ Failed to clear connections: {e}")
+        logger.error(f"Clear error: {e}", exc_info=True)
+        return False
+
+
 def migrate_connections():
     """Migrate connections from Google Sheets to Firestore"""
 
@@ -54,6 +96,11 @@ def migrate_connections():
 
     except Exception as e:
         print(f"❌ Failed to connect to Firestore: {e}")
+        return False
+
+    # Step 2.5: Clear existing connections
+    if not clear_connections(db):
+        print("❌ Failed to clear existing connections. Aborting migration.")
         return False
 
     # Step 3: Migrate connections

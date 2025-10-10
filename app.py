@@ -19,7 +19,7 @@ import time
 import secrets
 import pickle
 import hashlib
-import firestore_db  # Import Firestore helper module
+import firestore_db
 
 app = Flask(__name__)
 CORS(app)
@@ -108,16 +108,6 @@ connections_result_cache_ttl = 3600  # 1 hour cache for computed connections
 hierarchy_result_cache = {}
 hierarchy_result_cache_ttl = 3600  # 1 hour cache for hierarchy
 
-# ⚡ FIRESTORE: In-memory cache for employee lookups
-firestore_employee_cache = {}
-firestore_employee_cache_time = {}
-firestore_employee_cache_ttl = 3600  # 1 hour cache TTL
-
-# ⚡ FIRESTORE: Cache for search results
-firestore_search_cache = {}
-firestore_search_cache_time = {}
-firestore_search_cache_ttl = 600  # 10 minutes cache for searches
-
 # Disk cache configuration (using /tmp for Cloud Run)
 DISK_CACHE_DIR = '/tmp/qonnect_cache'
 DISK_CACHE_TTL = 7200  # 2 hours
@@ -187,34 +177,11 @@ def get_sheet_data_bulk():
         logger.error(f"❌ Bulk data load failed: {e}")
         return None, None
 
+@lru_cache(maxsize=5000)  # Increased cache size for better performance
 def get_employee_by_ldap(ldap: str):
-    """⚡ FIRESTORE: Ultra-fast employee lookup with in-memory caching"""
-    if not ldap:
-        return None
-
-    ldap_lower = ldap.lower()
-
-    # Check cache first
-    if ldap_lower in firestore_employee_cache:
-        cache_time = firestore_employee_cache_time.get(ldap_lower, 0)
-        if time.time() - cache_time < firestore_employee_cache_ttl:
-            # Cache hit!
-            return firestore_employee_cache[ldap_lower]
-
-    try:
-        # Cache miss - fetch from Firestore
-        employee = firestore_db.get_employee_by_ldap(ldap)
-
-        # Store in cache
-        if employee:
-            firestore_employee_cache[ldap_lower] = employee
-            firestore_employee_cache_time[ldap_lower] = time.time()
-
-        return employee
-    except Exception as e:
-        logger.error(f"Firestore lookup error for {ldap}: {e}")
-        # Fallback to in-memory data if available
-        return next((emp for emp in employees_data if emp.get('ldap', '').lower() == ldap_lower), None)
+    """Cached employee lookup by LDAP (case-insensitive)"""
+    ldap_lower = ldap.lower() if ldap else ''
+    return next((emp for emp in employees_data if emp.get('ldap', '').lower() == ldap_lower), None)
 
 def build_search_index():
     """Build search index for faster employee lookups"""
@@ -260,10 +227,18 @@ def build_search_index():
     logger.debug(f"Search index built in {elapsed:.2f}s")
 
 def get_cached_connections_data():
-    """⚡ FIRESTORE: Get cached connections data with instant performance"""
+    """Get cached connections data to avoid Google Sheets API quota issues"""
     global cached_connections_data, connections_cache_time
 
     current_time = time.time()
+
+    # Check disk cache first
+    disk_data = load_from_disk_cache('connections_data')
+    if disk_data:
+        logger.debug(f"💾 Using disk-cached connections data ({len(disk_data)} records)")
+        cached_connections_data = disk_data
+        connections_cache_time = current_time
+        return cached_connections_data
 
     # Check if cache is valid
     if (cached_connections_data is not None and
@@ -272,38 +247,41 @@ def get_cached_connections_data():
         logger.debug(f"📋 Using cached connections data ({len(cached_connections_data)} records)")
         return cached_connections_data
 
-    # Cache is stale or doesn't exist, fetch from Firestore
+    # Cache is stale or doesn't exist, fetch fresh data
     try:
-        logger.debug("⚡ Fetching connections from Firestore...")
+        logger.debug("🔄 Refreshing connections cache from Firestore...")
 
-        # Get all connections from Firestore (50-200ms)
-        connections = firestore_db.get_all_connections()
+        # Load from Firestore instead of Google Sheets
+        firestore_records = firestore_db.get_all_connections()
 
-        # Transform to match old Google Sheets format
+        # Transform Firestore snake_case to Sheets "Title Case" format for compatibility
         records = []
-        for conn in connections:
+        for rec in firestore_records:
             records.append({
-                'Google Employee LDAP': conn.get('google_employee_ldap', ''),
-                'Google Employee Name': conn.get('google_employee_name', ''),
-                'Google Employee Email': conn.get('google_employee_email', ''),
-                'Google Employee Department': conn.get('google_employee_department', ''),
-                'QT Employee LDAP': conn.get('qt_employee_ldap', ''),
-                'QT Employee Name': conn.get('qt_employee_name', ''),
-                'QT Employee Email': conn.get('qt_employee_email', ''),
-                'Connection Strength': conn.get('connection_strength', ''),
-                'Connection Type': conn.get('connection_type', ''),
-                'Declared by': conn.get('declared_by', 'System'),
-                'Timestamp': conn.get('timestamp', ''),
+                'Timestamp': rec.get('timestamp', ''),
+                'Google Employee LDAP': rec.get('google_employee_ldap', ''),
+                'Google Employee Name': rec.get('google_employee_name', ''),
+                'Google Employee Email': rec.get('google_employee_email', ''),
+                'Google Employee Department': rec.get('google_employee_department', ''),
+                'QT Employee LDAP': rec.get('qt_employee_ldap', ''),
+                'QT Employee Name': rec.get('qt_employee_name', ''),
+                'QT Employee Email': rec.get('qt_employee_email', ''),
+                'Connection Strength': rec.get('connection_strength', ''),
+                'Connection Type': rec.get('connection_type', ''),
+                'Declared by': rec.get('declared_by', ''),
             })
 
         cached_connections_data = records
         connections_cache_time = current_time
 
-        logger.debug(f"✅ Cached {len(cached_connections_data)} connections from Firestore")
+        # Save to disk cache
+        save_to_disk_cache('connections_data', cached_connections_data)
+
+        logger.debug(f"✅ Cached {len(cached_connections_data)} connections records (memory + disk)")
         return cached_connections_data
 
     except Exception as e:
-        logger.error(f"❌ Error fetching connections from Firestore: {e}")
+        logger.error(f"❌ Error refreshing connections cache: {e}")
         # Return stale cache if available, otherwise empty list
         if cached_connections_data is not None:
             logger.warning("⚠️ Using stale cache due to Firestore error")
@@ -321,7 +299,7 @@ def invalidate_connections_cache():
 
     # Clear LRU caches
     get_sheet_data_bulk.cache_clear()  # Clear bulk data cache
-    # Note: get_employee_by_ldap uses manual dict caching, not lru_cache
+    get_employee_by_ldap.cache_clear()  # Clear employee lookup cache
 
     logger.debug("🔄 All caches invalidated (including LRU caches) - next request will fetch fresh data")
 
@@ -967,18 +945,20 @@ def load_google_sheets_data_optimized():
             employees_data = global_employees_cache
             return True
 
-        logger.debug("Loading Google Sheets data with optimizations...")
+        logger.debug("Loading employee data from Firestore...")
 
-        employees, stats = processor.process_google_sheets_data_optimized()
-        
+        # Load from Firestore instead of Google Sheets
+        employees = firestore_db.get_google_employees()
+
         if not employees:
-            logger.error("No employee data processed")
+            logger.error("No employee data loaded from Firestore")
             return False
 
-        # Clear Firestore employee cache before loading new data
-        firestore_employee_cache.clear()
-        firestore_employee_cache_time.clear()
-
+        stats = {'total_records': len(employees), 'processing_time': 0}
+        
+        # Clear cache before loading new data
+        get_employee_by_ldap.cache_clear()
+        
         # Store data efficiently
         employees_data = employees
         processing_stats = stats
@@ -1439,38 +1419,66 @@ def sync_sharepoint():
 
 @bp.route('/api/search-employees')
 def search_employees():
-    """⚡ FIRESTORE: Ultra-fast employee search with caching + memory index"""
+    """OPTIMIZED: Employee search using search index for faster lookups"""
+    # Auto-load data if not loaded yet
+    if not employees_data:
+        logger.debug("Data not loaded, loading now...")
+        load_google_sheets_data_optimized()
+
     query = request.args.get('q', '').lower().strip()
 
     if len(query) < 2:
         return jsonify([])
 
-    # Check cache first
-    if query in firestore_search_cache:
-        cache_time = firestore_search_cache_time.get(query, 0)
-        if time.time() - cache_time < firestore_search_cache_ttl:
-            # Cache hit - return instantly!
-            logger.info(f"⚡ Cache HIT for '{query}'")
-            return jsonify(firestore_search_cache[query])
-
     try:
-        start_time = time.time()
         max_results = 25
+        candidates = set()  # Use set to avoid duplicates
 
-        # 🚀 NEW: Check in-memory email index FIRST (for exact email lookups during hierarchy building)
-        if '@' in query and query in employee_search_index.get('by_email', {}):
-            # Instant memory lookup for email!
-            results = employee_search_index['by_email'][query]
-            logger.info(f"⚡⚡⚡ INSTANT EMAIL INDEX HIT for '{query}' - {len(results)} results in <1ms!")
-        else:
-            # Cache miss - query Firestore for name/LDAP search
-            results = firestore_db.search_employees(query, limit=max_results)
+        # Use search index for faster lookups
+        if employee_search_index['last_built']:
+            # Try exact LDAP match first
+            if query in employee_search_index['by_ldap']:
+                candidates.update([emp['ldap'] for emp in employee_search_index['by_ldap'][query]])
 
-        # Transform results to match expected format
+            # Try email prefix match
+            if query in employee_search_index['by_email']:
+                candidates.update([emp['ldap'] for emp in employee_search_index['by_email'][query]])
+
+            # Try name token matches
+            for token in query.split():
+                if len(token) >= 2:
+                    # Partial match on token
+                    for index_token, emps in employee_search_index['by_name'].items():
+                        if token in index_token:
+                            candidates.update([emp['ldap'] for emp in emps])
+                            if len(candidates) >= max_results * 3:  # Get enough candidates
+                                break
+
+        # If index search didn't yield results, fall back to full scan
+        if not candidates:
+            for emp in employees_data[:500]:  # Limit fallback scan
+                name = emp.get('name', '').lower()
+                email = emp.get('email', '').lower()
+                ldap = emp.get('ldap', '').lower()
+
+                if (query in name or query in email or query in ldap or
+                    query in emp.get('department', '').lower() or
+                    query in emp.get('designation', '').lower()):
+                    candidates.add(ldap)
+
+        # Now score and filter the candidates
         filtered = []
-        for emp in results:
-            # Calculate relevance score for sorting
+        seen_employees = set()
+
+        for ldap in candidates:
+            emp = get_employee_by_ldap(ldap)
+            if not emp or ldap in seen_employees:
+                continue
+
+            seen_employees.add(ldap)
             score = 0
+
+            # Calculate relevance score
             name = emp.get('name', '').lower()
             email = emp.get('email', '').lower()
             emp_ldap = emp.get('ldap', '').lower()
@@ -1493,38 +1501,32 @@ def search_employees():
             elif query in emp.get('designation', '').lower():
                 score += 3
 
-            emp_copy = {
-                'ldap': emp.get('ldap', ''),
-                'name': emp.get('name', ''),
-                'email': emp.get('email', ''),
-                'department': emp.get('department', ''),
-                'designation': emp.get('designation', ''),
-                'company': emp.get('company', ''),
-                'organisation': emp.get('organisation', ''),
-                'avatar': emp.get('avatar', ''),
-                'manager': emp.get('manager', ''),
-                'location': emp.get('location', ''),
-                '_search_score': score,
-                'declared_connections': []
-            }
-            filtered.append(emp_copy)
+            if score > 0:
+                emp_copy = {
+                    'ldap': emp['ldap'],
+                    'name': emp['name'],
+                    'email': emp['email'],
+                    'department': emp['department'],
+                    'designation': emp['designation'],
+                    'company': emp['company'],
+                    'organisation': emp['organisation'],
+                    'avatar': emp['avatar'],
+                    'manager': emp.get('manager', ''),
+                    'location': emp.get('location', ''),
+                    '_search_score': score,
+                    'declared_connections': []
+                }
+                filtered.append(emp_copy)
+
+            if len(filtered) >= max_results:
+                break
 
         # Sort by score first, then alphabetically by name
         filtered.sort(key=lambda x: (-x['_search_score'], x['name'].lower()))
-        final_results = filtered[:max_results]
-
-        # Store in cache
-        firestore_search_cache[query] = final_results
-        firestore_search_cache_time[query] = time.time()
-
-        elapsed_ms = (time.time() - start_time) * 1000
-        logger.info(f"🚀 Firestore search for '{query}': {len(final_results)} results in {elapsed_ms:.0f}ms (cached)")
-
-        return jsonify(final_results)
+        return jsonify(filtered[:max_results])
 
     except Exception as e:
-        logger.error(f"Firestore search error: {e}")
-        # Fallback to empty results
+        logger.error(f"Search error: {e}")
         return jsonify([])
 
 @bp.route('/api/debug-get-employee-by-ldap/<ldap_id>')
@@ -1618,78 +1620,79 @@ def search_google_employees():
 
 @bp.route('/api/google-employees')
 def get_google_employees():
-    """⚡ FIRESTORE: Get Google employees (ultra-fast!)"""
+    """Get Google employees (optimized)"""
+    # Auto-load data if not loaded yet
+    if not employees_data:
+        logger.debug("Data not loaded, loading now...")
+        load_google_sheets_data_optimized()
+
     try:
-        start_time = time.time()
-
-        # Use Firestore to get Google employees
-        google_emps = firestore_db.get_google_employees(limit=1000)
-
-        # Return minimal employee data without connections
-        result = [
+        # Return minimal employee data without connections to reduce response size
+        # Connections field can be 10-20MB, causing Cloud Run response size limit errors
+        return jsonify([
             {
-                'ldap': emp.get('ldap', ''),
-                'name': emp.get('name', ''),
-                'email': emp.get('email', ''),
-                'department': emp.get('department', ''),
-                'designation': emp.get('designation', ''),
-                'company': emp.get('company', ''),
-                'organisation': emp.get('organisation', ''),
-                'avatar': emp.get('avatar', ''),
+                'ldap': emp['ldap'],
+                'name': emp['name'],
+                'email': emp['email'],
+                'department': emp['department'],
+                'designation': emp['designation'],
+                'company': emp['company'],
+                'organisation': emp['organisation'],
+                'avatar': emp['avatar'],
                 'manager': emp.get('manager', ''),
                 'location': emp.get('location', '')
+                # connections field removed to keep response size under Cloud Run's 32MB limit
             }
-            for emp in google_emps
-        ]
-
-        elapsed_ms = (time.time() - start_time) * 1000
-        logger.info(f"🚀 Firestore get_google_employees: {len(result)} results in {elapsed_ms:.0f}ms")
-
-        return jsonify(result)
-
+            for emp in google_employees
+        ])
+        
     except Exception as e:
-        logger.error(f"Firestore error getting Google employees: {e}")
+        logger.error(f"Error getting Google employees: {e}")
         return jsonify([])
 
 @bp.route('/api/qt-team')
 def get_qt_team():
-    """⚡ FIRESTORE: Get QT team members (returning empty for now - can be populated later)"""
-    try:
-        # For now, return empty array - can be populated from Firestore later if needed
-        # This prevents slow Google Sheets API calls on page load
-        return jsonify([])
+    """Get QT team members (optimized)"""
+    # Auto-load data if not loaded yet
+    if not employees_data:
+        logger.debug("Data not loaded, loading now...")
+        load_google_sheets_data_optimized()
 
+    try:
+        return jsonify([
+            {
+                'ldap': emp['ldap'],
+                'name': emp['name'],
+                'email': emp['email'],
+                'department': emp['department'],
+                'designation': emp['designation'],
+                'company': emp['company'],
+                'organisation': emp['organisation'],
+                'avatar': emp['avatar'],
+                'manager': emp.get('manager', ''),
+                'location': emp.get('location', ''),
+                'connections': emp.get('connections', [])
+            }
+            for emp in core_team
+        ])
+        
     except Exception as e:
         logger.error(f"Error getting QT team: {e}")
         return jsonify([])
 
 @bp.route('/api/hierarchy/<employee_ldap>')
 def get_employee_hierarchy_api(employee_ldap):
-    """Get organizational hierarchy for an employee (manager chain + reportees) - OPTIMIZED"""
+    """Get organizational hierarchy for an employee (manager chain + reportees)"""
     try:
         hierarchy = get_employee_hierarchy(employee_ldap)
 
         if not hierarchy:
             return jsonify({'error': 'Employee not found'}), 404
 
-        # Optimize: Only return minimal fields needed by frontend
-        def minify_employee(emp):
-            """Return only essential fields to reduce JSON size"""
-            return {
-                'ldap': emp.get('ldap'),
-                'name': emp.get('name'),
-                'email': emp.get('email'),
-                'designation': emp.get('designation'),
-                'manager': emp.get('manager')
-            }
-
-        # Limit reportees to first 50 for performance
-        reportees_limited = hierarchy['reportees'][:50]
-
         return jsonify({
-            'employee': minify_employee(hierarchy['employee']),
-            'manager_chain': [minify_employee(m) for m in hierarchy['manager_chain']],
-            'reportees': [minify_employee(r) for r in reportees_limited],
+            'employee': hierarchy['employee'],
+            'manager_chain': hierarchy['manager_chain'],
+            'reportees': hierarchy['reportees'],
             'peer_count': hierarchy['peer_count'],
             'total_reports': len(hierarchy['reportees']),
             'hierarchy_depth': len(hierarchy['manager_chain'])
@@ -1824,127 +1827,6 @@ def get_organizational_path_api(from_ldap, to_ldap):
     except Exception as e:
         logger.error(f"Organizational path API error for {from_ldap} -> {to_ldap}: {e}")
         return jsonify({'error': 'Failed to get organizational path'}), 500
-
-
-@bp.route('/api/full-hierarchy-path/<google_ldap>/<intermediate_ldap>')
-def get_full_hierarchy_path_api(google_ldap, intermediate_ldap):
-    """
-    Get complete organizational hierarchy for both Google employee and intermediate person in ONE call.
-    This replaces the need for multiple frontend API calls.
-    Returns: {
-        google_employee: {...},
-        google_manager_chain: [{...}, {...}],
-        intermediate_employee: {...},
-        intermediate_manager_chain: [{...}, {...}],
-        first_shared_manager: {...} or null
-    }
-    """
-    try:
-        start_time = time.time()
-
-        # Helper function to minify employee data
-        def minify(emp):
-            if not emp:
-                return None
-            return {
-                'ldap': emp.get('ldap'),
-                'name': emp.get('name'),
-                'email': emp.get('email'),
-                'designation': emp.get('designation'),
-                'manager': emp.get('manager'),
-                'avatar': emp.get('avatar', '')
-            }
-
-        # Get both employees
-        t1 = time.time()
-        google_emp = get_employee_by_ldap(google_ldap)
-        intermediate_emp = get_employee_by_ldap(intermediate_ldap)
-        fetch_time = (time.time() - t1) * 1000
-        logger.info(f"⏱️  Fetched 2 employees in {fetch_time:.1f}ms")
-
-        if not google_emp:
-            return jsonify({'error': 'Google employee not found'}), 404
-        if not intermediate_emp:
-            return jsonify({'error': 'Intermediate employee not found'}), 404
-
-        # Build manager chains for both
-        google_chain = []
-        intermediate_chain = []
-
-        # Build Google employee's manager chain (up to 20 levels)
-        t2 = time.time()
-        current = google_emp
-        visited = set()
-        max_depth = 20
-        depth = 0
-        while current and depth < max_depth:
-            depth += 1
-            if current.get('manager_info'):
-                manager_ldap = current['manager_info']['ldap']
-                if manager_ldap not in visited:
-                    visited.add(manager_ldap)
-                    manager = get_employee_by_ldap(manager_ldap)
-                    if manager:
-                        google_chain.append(manager)
-                        current = manager
-                    else:
-                        break
-                else:
-                    break
-            else:
-                break
-        google_chain_time = (time.time() - t2) * 1000
-        logger.info(f"⏱️  Built Google manager chain ({len(google_chain)} levels) in {google_chain_time:.1f}ms")
-
-        # Build intermediate employee's manager chain
-        t3 = time.time()
-        current = intermediate_emp
-        visited = set()
-        depth = 0
-        while current and depth < max_depth:
-            depth += 1
-            if current.get('manager_info'):
-                manager_ldap = current['manager_info']['ldap']
-                if manager_ldap not in visited:
-                    visited.add(manager_ldap)
-                    manager = get_employee_by_ldap(manager_ldap)
-                    if manager:
-                        intermediate_chain.append(manager)
-                        current = manager
-                    else:
-                        break
-                else:
-                    break
-            else:
-                break
-        intermediate_chain_time = (time.time() - t3) * 1000
-        logger.info(f"⏱️  Built intermediate manager chain ({len(intermediate_chain)} levels) in {intermediate_chain_time:.1f}ms")
-
-        # Find first shared manager (lowest common ancestor)
-        first_shared_manager = None
-        if google_chain and intermediate_chain:
-            google_manager_ldaps = set(m['ldap'].lower() for m in google_chain)
-            for manager in intermediate_chain:
-                if manager['ldap'].lower() in google_manager_ldaps:
-                    first_shared_manager = manager
-                    break
-
-        total_time = (time.time() - start_time) * 1000
-        logger.info(f"🎯 TOTAL hierarchy API time: {total_time:.1f}ms for {google_ldap} → {intermediate_ldap}")
-
-        # Return all data in one response
-        return jsonify({
-            'google_employee': minify(google_emp),
-            'google_manager_chain': [minify(m) for m in google_chain],
-            'intermediate_employee': minify(intermediate_emp),
-            'intermediate_manager_chain': [minify(m) for m in intermediate_chain],
-            'first_shared_manager': minify(first_shared_manager)
-        })
-
-    except Exception as e:
-        logger.error(f"Full hierarchy path API error for {google_ldap} -> {intermediate_ldap}: {e}")
-        return jsonify({'error': 'Failed to get full hierarchy path'}), 500
-
 
 @bp.route('/api/employees/<employee_id>')
 def get_employee_details(employee_id):
@@ -2480,15 +2362,9 @@ def get_connections_data(employee_ldap):
                 employee_department = hierarchy['employee'].get('department', '').lower() if hierarchy else ''
                 employee_organisation = hierarchy['employee'].get('organisation', '').lower() if hierarchy else ''
 
-                # Check each bridge employee (limited to 20 for performance)
+                # Check each bridge employee
                 transitive_found = 0
-                max_transitive_connections = 50  # Stop after finding 50 transitive connections
-                for bridge_ldap, qt_connections in list(bridge_employees.items())[:20]:  # Reduced from 100 to 20 for Firestore performance
-                    # Early termination if we found enough connections
-                    if transitive_found >= max_transitive_connections:
-                        logger.info(f"   Reached max transitive connections ({max_transitive_connections}), stopping search")
-                        break
-
+                for bridge_ldap, qt_connections in list(bridge_employees.items())[:100]:  # Increased from 50 to 100
                     try:
                         # Get bridge employee's info
                         bridge_emp = get_employee_by_ldap(bridge_ldap)
@@ -2628,7 +2504,7 @@ def get_connections_data(employee_ldap):
                     logger.info(f"✅ Found {transitive_found} transitive connections for {employee_ldap}")
                 else:
                     logger.info(f"⚠️  No transitive connections found for {employee_ldap}")
-                    logger.info(f"   Checked {len(list(bridge_employees.items())[:20])} bridge employees")
+                    logger.info(f"   Checked {len(list(bridge_employees.items())[:100])} bridge employees")
                     logger.info(f"   Employee manager chain emails: {employee_manager_chain_emails[:3]}")
                     logger.info(f"   Employee manager chain names: {employee_manager_chain_names[:3]}")
 
@@ -2995,26 +2871,26 @@ def debug_google_sheets_enhanced():
 
 @bp.route('/api/read-connections-sheet')
 def read_connections_sheet():
-    """⚡ FIRESTORE: Reads and returns connections data with instant performance."""
+    """Reads and returns the content of the 'Connections' sheet (cached)."""
     try:
-        logger.debug("⚡ Reading connections from Firestore cache...")
+        logger.debug("📖 Reading connections from cache...")
 
-        # Use cached connections data (now from Firestore!)
+        # Use cached connections data to avoid quota issues
         records = get_cached_connections_data()
 
-        logger.debug(f"✅ Retrieved {len(records)} connection records from Firestore")
+        logger.debug(f"✅ Retrieved {len(records)} connection records from cache")
 
         return jsonify({
             'connections': records,
             'total_count': len(records),
-            'source': 'firestore',
+            'sheet_url': f"{GOOGLE_SHEETS_CONFIG['spreadsheet_url']}",
             'last_updated': datetime.now().isoformat(),
             'cached': True,
             'cache_age_seconds': int(time.time() - (connections_cache_time or 0))
         })
-
+        
     except Exception as e:
-        logger.error(f"❌ Error getting connections from Firestore: {e}")
+        logger.error(f"❌ Error getting connections from sheets: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -3436,75 +3312,17 @@ def get_connection_stats():
         return jsonify({'error': str(e)}), 500
 
 def startup_cache_warmup():
-    """Pre-warm the cache on application startup - AGGRESSIVE MODE with Firestore"""
+    """Pre-warm the cache on application startup - AGGRESSIVE MODE"""
     try:
-        print("🔥 Warming up cache on startup...")
+        logger.debug("🔥 Warming up cache on startup...")
 
         # 1. Load employee data (includes disk cache, search index, org hierarchy)
-        try:
-            load_google_sheets_data_optimized()
-            print("✅ Loaded Google Sheets data")
-        except Exception as e:
-            print(f"⚠️  Error loading Google Sheets data: {e}")
+        load_google_sheets_data_optimized()
 
         # 2. Load connections data (includes disk cache)
-        try:
-            get_cached_connections_data()
-            print("✅ Loaded connections data")
-        except Exception as e:
-            print(f"⚠️  Error loading connections data: {e}")
+        get_cached_connections_data()
 
-        # 3. 🚀 BULK LOAD ALL EMPLOYEES INTO CACHE (critical for fast transitive connections!)
-        print("⚡ Bulk-loading ALL employees into memory cache...")
-        start_time = time.time()
-        try:
-            # Get ALL employees from Firestore (not just Google)
-            db = firestore_db.get_firestore_client()
-            results = db.collection('employees').stream()
-            all_employees = [{**doc.to_dict(), 'id': doc.id} for doc in results]
-            print(f"📥 Retrieved {len(all_employees)} total employees from Firestore")
-
-            # Pre-populate the in-memory cache with ALL employees
-            for emp in all_employees:
-                ldap = emp.get('ldap', '').lower()
-                if ldap:
-                    firestore_employee_cache[ldap] = emp
-                    firestore_employee_cache_time[ldap] = time.time()
-
-            elapsed = time.time() - start_time
-            print(f"✅ Cached {len(firestore_employee_cache)} employees in {elapsed:.2f}s - transitive connections will be FAST!")
-
-            # 3b. 🚀 BUILD EMAIL SEARCH INDEX from bulk-loaded employees
-            print("⚡ Building email search index for instant hierarchy loading...")
-            index_start = time.time()
-            employee_search_index['by_email'] = {}
-            employee_search_index['by_ldap'] = {}
-
-            for emp in all_employees:
-                email = emp.get('email', '').lower()
-                ldap = emp.get('ldap', '').lower()
-
-                # Index by email (for manager email lookups)
-                if email:
-                    if email not in employee_search_index['by_email']:
-                        employee_search_index['by_email'][email] = []
-                    employee_search_index['by_email'][email].append(emp)
-
-                # Also index by LDAP prefix from email for faster searches
-                if ldap:
-                    if ldap not in employee_search_index['by_ldap']:
-                        employee_search_index['by_ldap'][ldap] = []
-                    employee_search_index['by_ldap'][ldap].append(emp)
-
-            index_elapsed = time.time() - index_start
-            print(f"✅ Built search index with {len(employee_search_index['by_email'])} emails in {index_elapsed:.2f}s!")
-
-        except Exception as e:
-            print(f"❌ Failed to bulk-load employees: {e}")
-            import traceback
-            traceback.print_exc()
-
-        # 4. Pre-compute hierarchies for core team members (most likely to be searched)
+        # 3. Pre-compute hierarchies for core team members (most likely to be searched)
         if core_team:
             logger.debug(f"🎯 Pre-computing hierarchies for {len(core_team)} core team members...")
             for member in core_team[:20]:  # Pre-warm top 20 core team members
@@ -3515,11 +3333,20 @@ def startup_cache_warmup():
                     except Exception as e:
                         logger.debug(f"Error pre-computing hierarchy for {ldap}: {e}")
 
-        print("✅ Cache warmed up successfully - app is ready!")
+        # 4. Pre-populate LRU cache with common employee lookups
+        if employees_data:
+            logger.debug(f"🎯 Pre-populating LRU cache with {min(100, len(employees_data))} employees...")
+            for emp in employees_data[:100]:  # Pre-warm top 100 employees
+                ldap = emp.get('ldap')
+                if ldap:
+                    try:
+                        get_employee_by_ldap(ldap)
+                    except Exception as e:
+                        logger.debug(f"Error pre-loading employee {ldap}: {e}")
+
+        logger.debug("✅ Cache warmed up successfully")
     except Exception as e:
-        print(f"❌ Cache warmup failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"❌ Cache warmup failed: {e}")
 
 # Register blueprint
 app.register_blueprint(bp)
