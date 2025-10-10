@@ -2975,6 +2975,11 @@ def health_check():
         logger.error(f"Health check error: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 500
 
+# Root route handler to redirect to main path
+@app.route('/')
+def root():
+    return redirect('/smartstakeholdersearch/')
+
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
@@ -3681,13 +3686,25 @@ def startup_cache_warmup():
 # Register blueprint
 app.register_blueprint(bp)
 
+# Warmup cache on module load (for Gunicorn with --preload)
+# This runs once when the app is loaded, before workers are forked
+if os.environ.get('ENABLE_STARTUP_WARMUP', 'true').lower() == 'true':
+    print("🔥 Starting cache warmup on app load...")
+    try:
+        startup_cache_warmup()
+        print("✅ Cache warmup complete - ready to serve requests")
+    except Exception as e:
+        print(f"⚠️ Cache warmup failed: {e}")
+        print("⚡ Will load data on first request instead")
+
 if __name__ == '__main__':
     # Get port from environment variable (Cloud Run) or use 8080 as default
     port = int(os.environ.get('PORT', 8080))
     print(f"🚀 Qonnect - Starting on port {port}")
 
-    # Skip cache warmup to avoid startup errors
-    # Data will be loaded on-demand on first request from Google Sheets
-    print("⚡ Skipping startup cache warmup - data will load from Google Sheets on first request")
+    # Enable cache warmup for better first-request performance
+    print("🔥 Starting cache warmup...")
+    startup_cache_warmup()
+    print("✅ Cache warmup complete - ready to serve requests")
 
     app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
