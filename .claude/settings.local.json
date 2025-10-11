@@ -46,7 +46,9 @@
       "Bash(gcloud compute target-http-proxies describe:*)",
       "Bash(gcloud compute forwarding-rules delete:*)",
       "Bash(gcloud compute target-http-proxies delete:*)",
-      "Bash(gcloud compute ssl-certificates list:*)"
+      "Bash(gcloud compute ssl-certificates list:*)",
+      "Bash(git pull:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
