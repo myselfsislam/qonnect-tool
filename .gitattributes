@@ -1,0 +1,2 @@
+# Ensure credentials.json is never tracked by Git
+credentials.json export-ignore
