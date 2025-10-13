@@ -126,6 +126,9 @@ organizational_path_cache_ttl = 3600  # 1 hour cache for organizational paths
 DISK_CACHE_DIR = '/tmp/qonnect_cache'
 DISK_CACHE_TTL = None  # No expiry - cache is permanent
 
+# Cache version - increment this to invalidate all old caches when schema changes
+CACHE_VERSION = 'v2_with_org_paths'  # Changed from v1 to invalidate old caches without organizationalPath
+
 # GCS cache configuration for persistent storage (permanent cache)
 GCS_CACHE_ENABLED = os.environ.get('USE_GCS_CACHE', 'true').lower() == 'true'
 GCS_CACHE_BUCKET = os.environ.get('GCS_CACHE_BUCKET', 'smartstakeholdersearch-data')
@@ -2798,8 +2801,8 @@ def get_connections_data(employee_ldap):
             logger.debug(f"✓ Using memory cached connections for {employee_ldap}")
             return cached_data
 
-    # Check disk cache if not in memory
-    disk_cache_key = f'connections_result_{employee_ldap}'
+    # Check disk cache if not in memory (include cache version in key to invalidate old caches)
+    disk_cache_key = f'connections_result_{CACHE_VERSION}_{employee_ldap}'
     disk_cached = load_from_disk_cache(disk_cache_key)
     if disk_cached:
         logger.debug(f"✓ Using disk cached connections for {employee_ldap}")
@@ -2807,7 +2810,7 @@ def get_connections_data(employee_ldap):
         connections_result_cache[cache_key] = (disk_cached, current_time)
         return disk_cached
 
-    # Check GCS cache if not in disk
+    # Check GCS cache if not in disk (cache key includes version to invalidate old caches)
     gcs_cached = load_from_gcs_cache(disk_cache_key)
     if gcs_cached:
         logger.debug(f"✓ Using GCS cached connections for {employee_ldap}")
@@ -3263,12 +3266,12 @@ def get_connections_data(employee_ldap):
         # Cache the result for future requests (memory + disk + GCS)
         connections_result_cache[cache_key] = (deduplicated_connections, current_time)
 
-        # Save to disk cache for persistence across restarts
-        disk_cache_key = f'connections_result_{employee_ldap}'
+        # Save to disk cache for persistence across restarts (include version in key)
+        disk_cache_key = f'connections_result_{CACHE_VERSION}_{employee_ldap}'
         save_to_disk_cache(disk_cache_key, deduplicated_connections)
         logger.debug(f"✓ Saved connections to disk cache for {employee_ldap}")
 
-        # Save to GCS cache for long-term persistence (1 week)
+        # Save to GCS cache for long-term persistence
         save_to_gcs_cache(disk_cache_key, deduplicated_connections)
 
         return deduplicated_connections
