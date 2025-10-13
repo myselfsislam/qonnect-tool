@@ -1824,8 +1824,21 @@
                 return [googleEmployee];
             }
 
+            // NEW: Check if organizational path is pre-computed in connection data
+            if (connection && connection.organizationalPath && connection.organizationalPath.path) {
+                console.log('✓ Using pre-computed organizational path from connection data (INSTANT!)');
+                console.log('Pre-computed path:', {
+                    pathLength: connection.organizationalPath.path.length,
+                    intermediateCount: connection.organizationalPath.intermediateCount,
+                    path: connection.organizationalPath.path.map(e => e.name)
+                });
+                return connection.organizationalPath.path;
+            }
+
+            // Fallback: If not pre-computed, fetch from API (slower)
+            console.log('⚠ Organizational path not pre-computed, fetching from API...');
             try {
-                // Use the new organizational path API endpoint
+                // Use the organizational path API endpoint as fallback
                 const response = await cachedFetch(`/smartstakeholdersearch/api/organizational-path/${googleEmployee.ldap}/${bridgeLdap}`);
 
                 console.log('Organizational path response:', {
