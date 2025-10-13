@@ -1947,11 +1947,31 @@
             /**
              * Build the complete organizational path from employee up to top manager
              * Returns array: [employee, manager1, manager2, ..., topManager]
+             *
+             * OPTIMIZED: Use cached API endpoint instead of slow local manager lookups
              */
+            try {
+                // Use cached API endpoint for hierarchy (FAST!)
+                const hierarchyData = await cachedFetch(`/smartstakeholdersearch/api/hierarchy/${employee.ldap}`);
+
+                if (hierarchyData && hierarchyData.manager_chain) {
+                    const path = [employee, ...hierarchyData.manager_chain];
+                    console.log(`✓ Full organizational path for ${employee.name} from API (cached):`, {
+                        employee: employee.name,
+                        hierarchyCount: hierarchyData.manager_chain.length,
+                        managers: hierarchyData.manager_chain.map(m => m.name)
+                    });
+                    return path;
+                }
+            } catch (error) {
+                console.warn(`⚠ Failed to get hierarchy from API for ${employee.name}, falling back to local lookup:`, error);
+            }
+
+            // Fallback: Use slow local manager lookups
             const path = [employee];
             const hierarchy = await buildManagerHierarchy(employee);
 
-            console.log(`Full organizational path for ${employee.name}:`, {
+            console.log(`Full organizational path for ${employee.name} (fallback):`, {
                 employee: employee.name,
                 hierarchyCount: hierarchy.length,
                 managers: hierarchy.map(m => m.name)
