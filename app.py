@@ -1668,7 +1668,19 @@ def declare():
 def search():
     try:
         with open('templates/search.html', 'r', encoding='utf-8') as f:
-            return f.read()
+            html = f.read()
+
+            # Check if nocache parameter is present to bypass CDN caching
+            nocache = request.args.get('nocache', '0')
+            if nocache == '1':
+                response = make_response(html)
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
+                response.headers['X-Cache-Bypass'] = 'true'
+                return response
+
+            return html
     except FileNotFoundError:
         return '<h1>Search page not found</h1><a href="/">Back to Home</a>'
 
