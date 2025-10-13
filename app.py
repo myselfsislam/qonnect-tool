@@ -120,14 +120,14 @@ hierarchy_result_cache_ttl = 3600  # 1 hour cache for hierarchy
 
 # Cache for organizational path lookups
 organizational_path_cache = {}
-organizational_path_cache_ttl = 3600  # 1 hour cache for organizational paths
+organizational_path_cache_ttl = float('inf')  # Infinite cache - never expires (manual clear only)
 
 # Disk cache configuration (using /tmp for Cloud Run)
 DISK_CACHE_DIR = '/tmp/qonnect_cache'
 DISK_CACHE_TTL = None  # No expiry - cache is permanent
 
 # Cache version - increment this to invalidate all old caches when schema changes
-CACHE_VERSION = 'v2_with_org_paths'  # Changed from v1 to invalidate old caches without organizationalPath
+CACHE_VERSION = 'v3_infinite_cache'  # v3: Infinite cache with validation + pre-computed paths
 
 # GCS cache configuration for persistent storage (permanent cache)
 GCS_CACHE_ENABLED = os.environ.get('USE_GCS_CACHE', 'true').lower() == 'true'
@@ -2298,6 +2298,66 @@ def get_organizational_path_api(from_ldap, to_ldap):
         logger.error(f"Organizational path API error for {from_ldap} -> {to_ldap}: {e}")
         return jsonify({'error': 'Failed to get organizational path'}), 500
 
+@bp.route('/api/clear-organizational-cache', methods=['POST'])
+def clear_organizational_cache_api():
+    """Clear all organizational caches (memory, disk, GCS) - Admin endpoint"""
+    global organizational_path_cache, connections_result_cache, hierarchy_result_cache
+
+    try:
+        # Clear in-memory caches
+        org_path_count = len(organizational_path_cache)
+        connections_count = len(connections_result_cache)
+        hierarchy_count = len(hierarchy_result_cache)
+
+        organizational_path_cache.clear()
+        connections_result_cache.clear()
+        hierarchy_result_cache.clear()
+
+        logger.info(f"✓ Cleared in-memory caches: {org_path_count} org paths, {connections_count} connections, {hierarchy_count} hierarchies")
+
+        # Clear disk cache
+        import shutil
+        if os.path.exists(DISK_CACHE_DIR):
+            shutil.rmtree(DISK_CACHE_DIR)
+            os.makedirs(DISK_CACHE_DIR, exist_ok=True)
+            logger.info(f"✓ Cleared disk cache directory: {DISK_CACHE_DIR}")
+
+        # Clear GCS cache (delete all cache files)
+        gcs_cleared_count = 0
+        if GCS_CACHE_ENABLED:
+            try:
+                from google.cloud import storage
+                client = storage.Client()
+                bucket = client.bucket(GCS_CACHE_BUCKET)
+                blobs = bucket.list_blobs(prefix=GCS_CACHE_PREFIX)
+                for blob in blobs:
+                    blob.delete()
+                    gcs_cleared_count += 1
+                logger.info(f"✓ Cleared {gcs_cleared_count} files from GCS cache")
+            except Exception as gcs_error:
+                logger.warning(f"Failed to clear GCS cache: {gcs_error}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Cache cleared successfully',
+            'details': {
+                'memory': {
+                    'organizational_paths': org_path_count,
+                    'connections': connections_count,
+                    'hierarchies': hierarchy_count
+                },
+                'disk': 'cleared',
+                'gcs': f'{gcs_cleared_count} files deleted' if GCS_CACHE_ENABLED else 'disabled'
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to clear organizational cache: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @bp.route('/api/employees/<employee_id>')
 def get_employee_details(employee_id):
     """Enhanced employee details with organizational hierarchy"""
@@ -2792,32 +2852,57 @@ def get_connections_data(employee_ldap):
     """Get actual organizational connections and hierarchy for an employee, including those from Google Sheets - INTERNAL VERSION"""
     global connections_result_cache
 
+    # Helper function to validate cache has organizationalPath fields
+    def has_organizational_paths(connections_list):
+        """Check if cached connections have pre-computed organizational paths"""
+        if not connections_list or len(connections_list) == 0:
+            return True  # Empty list is valid
+        # Check first connection with intermediateLdap - it should have organizationalPath
+        for conn in connections_list:
+            if conn.get('intermediateLdap'):
+                return 'organizationalPath' in conn
+        return True  # No connections with bridges, so no paths needed
+
     # Check cache first (memory cache)
     current_time = time.time()
     cache_key = employee_ldap
     if cache_key in connections_result_cache:
         cached_data, cache_time = connections_result_cache[cache_key]
         if current_time - cache_time < connections_result_cache_ttl:
-            logger.debug(f"✓ Using memory cached connections for {employee_ldap}")
-            return cached_data
+            # Validate cache has organizational paths
+            if has_organizational_paths(cached_data):
+                logger.debug(f"✓ Using memory cached connections for {employee_ldap}")
+                return cached_data
+            else:
+                logger.debug(f"⚠ Memory cache missing organizationalPath, invalidating...")
+                del connections_result_cache[cache_key]
 
     # Check disk cache if not in memory (include cache version in key to invalidate old caches)
     disk_cache_key = f'connections_result_{CACHE_VERSION}_{employee_ldap}'
     disk_cached = load_from_disk_cache(disk_cache_key)
     if disk_cached:
-        logger.debug(f"✓ Using disk cached connections for {employee_ldap}")
-        # Also populate memory cache for faster subsequent access
-        connections_result_cache[cache_key] = (disk_cached, current_time)
-        return disk_cached
+        # Validate cache has organizational paths
+        if has_organizational_paths(disk_cached):
+            logger.debug(f"✓ Using disk cached connections for {employee_ldap}")
+            # Also populate memory cache for faster subsequent access
+            connections_result_cache[cache_key] = (disk_cached, current_time)
+            return disk_cached
+        else:
+            logger.debug(f"⚠ Disk cache missing organizationalPath, invalidating...")
+            # Don't return, let it recompute
 
     # Check GCS cache if not in disk (cache key includes version to invalidate old caches)
     gcs_cached = load_from_gcs_cache(disk_cache_key)
     if gcs_cached:
-        logger.debug(f"✓ Using GCS cached connections for {employee_ldap}")
-        # Populate both disk and memory cache for faster subsequent access
-        save_to_disk_cache(disk_cache_key, gcs_cached)
-        connections_result_cache[cache_key] = (gcs_cached, current_time)
-        return gcs_cached
+        # Validate cache has organizational paths
+        if has_organizational_paths(gcs_cached):
+            logger.debug(f"✓ Using GCS cached connections for {employee_ldap}")
+            # Populate both disk and memory cache for faster subsequent access
+            save_to_disk_cache(disk_cache_key, gcs_cached)
+            connections_result_cache[cache_key] = (gcs_cached, current_time)
+            return gcs_cached
+        else:
+            logger.debug(f"⚠ GCS cache missing organizationalPath, invalidating...")
 
     try:
         # Get hierarchy information
