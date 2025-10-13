@@ -120,13 +120,13 @@ hierarchy_result_cache_ttl = 3600  # 1 hour cache for hierarchy
 
 # Disk cache configuration (using /tmp for Cloud Run)
 DISK_CACHE_DIR = '/tmp/qonnect_cache'
-DISK_CACHE_TTL = 604800  # 1 week (7 days)
+DISK_CACHE_TTL = None  # No expiry - cache is permanent
 
-# GCS cache configuration for persistent storage
+# GCS cache configuration for persistent storage (permanent cache)
 GCS_CACHE_ENABLED = os.environ.get('USE_GCS_CACHE', 'true').lower() == 'true'
 GCS_CACHE_BUCKET = os.environ.get('GCS_CACHE_BUCKET', 'smartstakeholdersearch-data')
 GCS_CACHE_PREFIX = 'cache/'
-GCS_CACHE_TTL = 604800  # 1 week (7 days)
+GCS_CACHE_TTL = None  # No expiry - cache is permanent
 
 # Helper functions for disk caching
 def get_disk_cache_path(cache_key):
@@ -137,18 +137,13 @@ def get_disk_cache_path(cache_key):
     return os.path.join(DISK_CACHE_DIR, f'{key_hash}.pkl')
 
 def load_from_disk_cache(cache_key):
-    """Load data from disk cache if valid"""
+    """Load data from disk cache (no expiry)"""
     try:
         cache_path = get_disk_cache_path(cache_key)
         if not os.path.exists(cache_path):
             return None
 
-        # Check if cache is still valid
-        cache_age = time.time() - os.path.getmtime(cache_path)
-        if cache_age > DISK_CACHE_TTL:
-            os.remove(cache_path)
-            return None
-
+        # No TTL check - cache never expires
         with open(cache_path, 'rb') as f:
             return pickle.load(f)
     except Exception as e:
@@ -171,7 +166,7 @@ def get_gcs_cache_key(cache_key):
     return f'{GCS_CACHE_PREFIX}{key_hash}.pkl'
 
 def load_from_gcs_cache(cache_key):
-    """Load data from GCS cache if valid"""
+    """Load data from GCS cache (no expiry)"""
     if not GCS_CACHE_ENABLED:
         return None
 
@@ -184,14 +179,7 @@ def load_from_gcs_cache(cache_key):
         if not blob.exists():
             return None
 
-        # Check if cache is still valid
-        blob.reload()
-        cache_age = (datetime.now(blob.updated.tzinfo) - blob.updated).total_seconds()
-        if cache_age > GCS_CACHE_TTL:
-            blob.delete()
-            logger.debug(f"GCS cache expired for {cache_key}")
-            return None
-
+        # No TTL check - cache never expires
         # Download and deserialize
         data_bytes = blob.download_as_bytes()
         data = pickle.loads(data_bytes)
@@ -1709,6 +1697,54 @@ def sync_google_sheets():
 def sync_sharepoint():
     """Legacy endpoint - redirects to optimized Google Sheets sync"""
     return sync_google_sheets()
+
+@bp.route('/api/clear-cache', methods=['POST'])
+def clear_cache():
+    """Clear all caches (memory, disk, and GCS) to force recomputation"""
+    try:
+        # Clear memory caches
+        global connections_result_cache, hierarchy_result_cache
+        connections_cleared = len(connections_result_cache)
+        hierarchy_cleared = len(hierarchy_result_cache)
+        connections_result_cache.clear()
+        hierarchy_result_cache.clear()
+
+        # Clear disk cache
+        disk_files_cleared = 0
+        if os.path.exists(DISK_CACHE_DIR):
+            for filename in os.listdir(DISK_CACHE_DIR):
+                file_path = os.path.join(DISK_CACHE_DIR, filename)
+                if filename.endswith('.pkl'):
+                    os.remove(file_path)
+                    disk_files_cleared += 1
+
+        # Clear GCS cache
+        gcs_files_cleared = 0
+        if GCS_CACHE_ENABLED:
+            try:
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(GCS_CACHE_BUCKET)
+                blobs = bucket.list_blobs(prefix=GCS_CACHE_PREFIX)
+                for blob in blobs:
+                    blob.delete()
+                    gcs_files_cleared += 1
+            except Exception as gcs_error:
+                logger.error(f"Error clearing GCS cache: {gcs_error}")
+
+        return jsonify({
+            'success': True,
+            'message': 'All caches cleared successfully',
+            'stats': {
+                'memory_connections_cleared': connections_cleared,
+                'memory_hierarchy_cleared': hierarchy_cleared,
+                'disk_files_cleared': disk_files_cleared,
+                'gcs_files_cleared': gcs_files_cleared
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Cache clear error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @bp.route('/api/search-employees')
 def search_employees():
