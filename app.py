@@ -19,6 +19,7 @@ import time
 import secrets
 import pickle
 import hashlib
+from google.cloud import storage
 # Firestore removed - using Google Sheets only
 
 app = Flask(__name__)
@@ -119,7 +120,13 @@ hierarchy_result_cache_ttl = 3600  # 1 hour cache for hierarchy
 
 # Disk cache configuration (using /tmp for Cloud Run)
 DISK_CACHE_DIR = '/tmp/qonnect_cache'
-DISK_CACHE_TTL = 7200  # 2 hours
+DISK_CACHE_TTL = 604800  # 1 week (7 days)
+
+# GCS cache configuration for persistent storage
+GCS_CACHE_ENABLED = os.environ.get('USE_GCS_CACHE', 'true').lower() == 'true'
+GCS_CACHE_BUCKET = os.environ.get('GCS_CACHE_BUCKET', 'smartstakeholdersearch-data')
+GCS_CACHE_PREFIX = 'cache/'
+GCS_CACHE_TTL = 604800  # 1 week (7 days)
 
 # Helper functions for disk caching
 def get_disk_cache_path(cache_key):
@@ -156,6 +163,61 @@ def save_to_disk_cache(cache_key, data):
             pickle.dump(data, f)
     except Exception as e:
         logger.debug(f"Error saving to disk cache: {e}")
+
+# GCS cache helper functions
+def get_gcs_cache_key(cache_key):
+    """Get GCS object path for cache"""
+    key_hash = hashlib.md5(cache_key.encode()).hexdigest()
+    return f'{GCS_CACHE_PREFIX}{key_hash}.pkl'
+
+def load_from_gcs_cache(cache_key):
+    """Load data from GCS cache if valid"""
+    if not GCS_CACHE_ENABLED:
+        return None
+
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(GCS_CACHE_BUCKET)
+        blob_name = get_gcs_cache_key(cache_key)
+        blob = bucket.blob(blob_name)
+
+        if not blob.exists():
+            return None
+
+        # Check if cache is still valid
+        blob.reload()
+        cache_age = (datetime.now(blob.updated.tzinfo) - blob.updated).total_seconds()
+        if cache_age > GCS_CACHE_TTL:
+            blob.delete()
+            logger.debug(f"GCS cache expired for {cache_key}")
+            return None
+
+        # Download and deserialize
+        data_bytes = blob.download_as_bytes()
+        data = pickle.loads(data_bytes)
+        logger.debug(f"✓ Loaded from GCS cache: {cache_key}")
+        return data
+    except Exception as e:
+        logger.debug(f"Error loading from GCS cache: {e}")
+        return None
+
+def save_to_gcs_cache(cache_key, data):
+    """Save data to GCS cache"""
+    if not GCS_CACHE_ENABLED:
+        return
+
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(GCS_CACHE_BUCKET)
+        blob_name = get_gcs_cache_key(cache_key)
+        blob = bucket.blob(blob_name)
+
+        # Serialize and upload
+        data_bytes = pickle.dumps(data)
+        blob.upload_from_string(data_bytes, content_type='application/octet-stream')
+        logger.debug(f"✓ Saved to GCS cache: {cache_key}")
+    except Exception as e:
+        logger.debug(f"Error saving to GCS cache: {e}")
 
 # JSON Data Loading Functions (Hybrid Approach)
 def load_json_from_local(filename):
@@ -1225,13 +1287,31 @@ def get_employee_hierarchy(employee_ldap):
     """Get the full hierarchy for an employee (manager chain and reportees) - CACHED"""
     global hierarchy_result_cache
 
-    # Check cache first
+    # Check cache first (memory cache)
     current_time = time.time()
     cache_key = employee_ldap.lower() if employee_ldap else ''
     if cache_key in hierarchy_result_cache:
         cached_data, cache_time = hierarchy_result_cache[cache_key]
         if current_time - cache_time < hierarchy_result_cache_ttl:
             return cached_data
+
+    # Check disk cache if not in memory
+    disk_cache_key = f'hierarchy_result_{cache_key}'
+    disk_cached = load_from_disk_cache(disk_cache_key)
+    if disk_cached:
+        logger.debug(f"✓ Using disk cached hierarchy for {employee_ldap}")
+        # Also populate memory cache for faster subsequent access
+        hierarchy_result_cache[cache_key] = (disk_cached, current_time)
+        return disk_cached
+
+    # Check GCS cache if not in disk
+    gcs_cached = load_from_gcs_cache(disk_cache_key)
+    if gcs_cached:
+        logger.debug(f"✓ Using GCS cached hierarchy for {employee_ldap}")
+        # Populate both disk and memory cache for faster subsequent access
+        save_to_disk_cache(disk_cache_key, gcs_cached)
+        hierarchy_result_cache[cache_key] = (gcs_cached, current_time)
+        return gcs_cached
 
     try:
         employee = get_employee_by_ldap(employee_ldap)
@@ -1277,8 +1357,16 @@ def get_employee_hierarchy(employee_ldap):
             if manager:
                 hierarchy['peer_count'] = len(manager.get('reportees', [])) - 1  # Exclude self
 
-        # Cache the result
+        # Cache the result (memory + disk + GCS)
         hierarchy_result_cache[cache_key] = (hierarchy, current_time)
+
+        # Save to disk cache for persistence across restarts
+        disk_cache_key = f'hierarchy_result_{cache_key}'
+        save_to_disk_cache(disk_cache_key, hierarchy)
+        logger.debug(f"✓ Saved hierarchy to disk cache for {employee_ldap}")
+
+        # Save to GCS cache for long-term persistence (1 week)
+        save_to_gcs_cache(disk_cache_key, hierarchy)
 
         return hierarchy
 
@@ -2527,14 +2615,32 @@ def get_connections_data(employee_ldap):
     """Get actual organizational connections and hierarchy for an employee, including those from Google Sheets - INTERNAL VERSION"""
     global connections_result_cache
 
-    # Check cache first
+    # Check cache first (memory cache)
     current_time = time.time()
     cache_key = employee_ldap
     if cache_key in connections_result_cache:
         cached_data, cache_time = connections_result_cache[cache_key]
         if current_time - cache_time < connections_result_cache_ttl:
-            logger.debug(f"Using cached connections for {employee_ldap}")
+            logger.debug(f"✓ Using memory cached connections for {employee_ldap}")
             return cached_data
+
+    # Check disk cache if not in memory
+    disk_cache_key = f'connections_result_{employee_ldap}'
+    disk_cached = load_from_disk_cache(disk_cache_key)
+    if disk_cached:
+        logger.debug(f"✓ Using disk cached connections for {employee_ldap}")
+        # Also populate memory cache for faster subsequent access
+        connections_result_cache[cache_key] = (disk_cached, current_time)
+        return disk_cached
+
+    # Check GCS cache if not in disk
+    gcs_cached = load_from_gcs_cache(disk_cache_key)
+    if gcs_cached:
+        logger.debug(f"✓ Using GCS cached connections for {employee_ldap}")
+        # Populate both disk and memory cache for faster subsequent access
+        save_to_disk_cache(disk_cache_key, gcs_cached)
+        connections_result_cache[cache_key] = (gcs_cached, current_time)
+        return gcs_cached
 
     try:
         # Get hierarchy information
@@ -2926,8 +3032,16 @@ def get_connections_data(employee_ldap):
 
         logger.debug(f"After deduplication: {len(deduplicated_connections)} unique QT connections for {employee_ldap}")
 
-        # Cache the result for future requests
+        # Cache the result for future requests (memory + disk + GCS)
         connections_result_cache[cache_key] = (deduplicated_connections, current_time)
+
+        # Save to disk cache for persistence across restarts
+        disk_cache_key = f'connections_result_{employee_ldap}'
+        save_to_disk_cache(disk_cache_key, deduplicated_connections)
+        logger.debug(f"✓ Saved connections to disk cache for {employee_ldap}")
+
+        # Save to GCS cache for long-term persistence (1 week)
+        save_to_gcs_cache(disk_cache_key, deduplicated_connections)
 
         return deduplicated_connections
 
