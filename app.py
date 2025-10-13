@@ -2038,6 +2038,109 @@ def get_employee_hierarchy_api(employee_ldap):
         logger.error(f"Hierarchy API error for {employee_ldap}: {e}")
         return jsonify({'error': 'Failed to get hierarchy'}), 500
 
+def calculate_actual_organizational_path(from_emp, to_emp):
+    """
+    Calculate the organizational path between two employees (helper function).
+    Returns dict with 'path' and 'intermediateCount' keys.
+    """
+    from_ldap = from_emp.get('ldap', '').lower()
+    to_ldap = to_emp.get('ldap', '').lower()
+
+    # Build manager chains for both employees using manager_info
+    from_chain = []
+    to_chain = []
+
+    # Build from_emp's manager chain
+    current = from_emp
+    visited = set()
+    max_depth = 20  # Prevent infinite loops
+    depth = 0
+    while current and depth < max_depth:
+        depth += 1
+        manager = None
+        manager_ldap = None
+
+        if current.get('manager_info'):
+            manager_ldap = current['manager_info']['ldap']
+            if manager_ldap not in visited:
+                visited.add(manager_ldap)
+                manager = get_employee_by_ldap(manager_ldap)
+                if manager:
+                    from_chain.append(manager)
+                    current = manager
+                else:
+                    sundar = get_employee_by_ldap('sundar')
+                    if sundar and 'sundar' not in visited:
+                        from_chain.append(sundar)
+                    break
+            else:
+                break
+        else:
+            sundar = get_employee_by_ldap('sundar')
+            if sundar and 'sundar' not in visited:
+                from_chain.append(sundar)
+            break
+
+    # Build to_emp's manager chain
+    current = to_emp
+    visited = set()
+    depth = 0
+    while current and depth < max_depth:
+        depth += 1
+        manager = None
+        manager_ldap = None
+
+        if current.get('manager_info'):
+            manager_ldap = current['manager_info']['ldap']
+            if manager_ldap not in visited:
+                visited.add(manager_ldap)
+                manager = get_employee_by_ldap(manager_ldap)
+                if manager:
+                    to_chain.append(manager)
+                    current = manager
+                else:
+                    sundar = get_employee_by_ldap('sundar')
+                    if sundar and 'sundar' not in visited:
+                        to_chain.append(sundar)
+                    break
+            else:
+                break
+        else:
+            sundar = get_employee_by_ldap('sundar')
+            if sundar and 'sundar' not in visited:
+                to_chain.append(sundar)
+            break
+
+    # Now build the complete path
+    path = []
+
+    # Check if to_emp is in from_emp's manager chain
+    for i, manager in enumerate(from_chain):
+        if manager['ldap'].lower() == to_ldap:
+            path = [from_emp] + from_chain[:i+1]
+            return {'path': path, 'intermediateCount': i + 1}
+
+    # Check if from_emp is in to_emp's manager chain
+    for i, manager in enumerate(to_chain):
+        if manager['ldap'].lower() == from_ldap:
+            path = [from_emp] + list(reversed(to_chain[:i])) + [to_emp]
+            return {'path': path, 'intermediateCount': i + 1}
+
+    # Check if they share a common manager
+    for i, from_manager in enumerate(from_chain):
+        for j, to_manager in enumerate(to_chain):
+            if from_manager['ldap'].lower() == to_manager['ldap'].lower():
+                path_up = [from_emp] + from_chain[:i]
+                common_manager = from_manager
+                path_down = list(reversed(to_chain[:j])) + [to_emp]
+                path = path_up + [common_manager] + path_down
+                return {'path': path, 'intermediateCount': i + j + 2}
+
+    # No relationship found - return estimate based on chain lengths
+    estimate = len(from_chain) + len(to_chain) + 1
+    path = [from_emp] + from_chain + list(reversed(to_chain)) + [to_emp]
+    return {'path': path, 'intermediateCount': estimate}
+
 @bp.route('/api/organizational-path/<from_ldap>/<to_ldap>')
 def get_organizational_path_api(from_ldap, to_ldap):
     """Get the actual organizational path between two employees - CACHED"""
@@ -3102,6 +3205,60 @@ def get_connections_data(employee_ldap):
         deduplicated_connections = list(qt_best_connections.values())
 
         logger.debug(f"After deduplication: {len(deduplicated_connections)} unique QT connections for {employee_ldap}")
+
+        # --- PRE-COMPUTE ORGANIZATIONAL PATHS: Add path data to each connection ---
+        logger.debug(f"Pre-computing organizational paths for {len(deduplicated_connections)} connections...")
+        for connection in deduplicated_connections:
+            bridge_ldap = connection.get('intermediateLdap')
+            if bridge_ldap:
+                try:
+                    # Get organizational path from employee to bridge
+                    path_cache_key = f"{employee_ldap.lower()}:{bridge_ldap.lower()}"
+                    path_current_time = time.time()
+
+                    # Check organizational_path_cache first
+                    path_data = None
+                    if path_cache_key in organizational_path_cache:
+                        cached_path, cache_time = organizational_path_cache[path_cache_key]
+                        if path_current_time - cache_time < organizational_path_cache_ttl:
+                            path_data = cached_path
+                            logger.debug(f"  ✓ Using cached path for {employee_ldap} → {bridge_ldap}")
+
+                    # If not in cache, compute it
+                    if not path_data:
+                        # Get employees
+                        from_emp = get_employee_by_ldap(employee_ldap)
+                        to_emp = get_employee_by_ldap(bridge_ldap)
+
+                        if from_emp and to_emp:
+                            # Call the path calculation logic directly (similar to get_organizational_path_api)
+                            path_result = calculate_actual_organizational_path(from_emp, to_emp)
+                            if path_result:
+                                path_data = path_result
+                                # Cache it for future use
+                                organizational_path_cache[path_cache_key] = (path_data, path_current_time)
+                                logger.debug(f"  ✓ Computed and cached path for {employee_ldap} → {bridge_ldap}")
+
+                    # Add path data to connection
+                    if path_data:
+                        connection['organizationalPath'] = {
+                            'path': path_data.get('path', []),
+                            'intermediateCount': path_data.get('intermediateCount', 1),
+                            'pathLength': len(path_data.get('path', []))
+                        }
+                        logger.debug(f"  ✓ Added path to {connection.get('qtName', 'Unknown')}: {connection['organizationalPath']['intermediateCount']} intermediates")
+                    else:
+                        connection['organizationalPath'] = None
+                        logger.debug(f"  ⚠ No path computed for {connection.get('qtName', 'Unknown')}")
+
+                except Exception as e:
+                    logger.warning(f"Failed to calculate path for {connection.get('qtName', 'Unknown')}: {e}")
+                    connection['organizationalPath'] = None
+            else:
+                # No intermediate person (direct connection)
+                connection['organizationalPath'] = None
+
+        logger.debug(f"✓ Pre-computed all organizational paths")
 
         # Cache the result for future requests (memory + disk + GCS)
         connections_result_cache[cache_key] = (deduplicated_connections, current_time)
