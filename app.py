@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template_string, send_from_directory, session, redirect, url_for, render_template, Blueprint
+from flask import Flask, jsonify, request, render_template_string, send_from_directory, session, redirect, url_for, render_template, Blueprint, make_response
 from flask_cors import CORS
 import pandas as pd
 import json
@@ -1669,6 +1669,22 @@ def search():
     try:
         with open('templates/search.html', 'r', encoding='utf-8') as f:
             return f.read()
+    except FileNotFoundError:
+        return '<h1>Search page not found</h1><a href="/">Back to Home</a>'
+
+@bp.route('/search-fast')
+@login_required
+def search_fast():
+    """New route to bypass CDN cache - serves same optimized search page"""
+    try:
+        with open('templates/search.html', 'r', encoding='utf-8') as f:
+            html = f.read()
+            # Add header to prevent caching
+            response = make_response(html)
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            return response
     except FileNotFoundError:
         return '<h1>Search page not found</h1><a href="/">Back to Home</a>'
 
