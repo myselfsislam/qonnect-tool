@@ -118,6 +118,10 @@ connections_result_cache_ttl = 3600  # 1 hour cache for computed connections
 hierarchy_result_cache = {}
 hierarchy_result_cache_ttl = 3600  # 1 hour cache for hierarchy
 
+# Cache for organizational path lookups
+organizational_path_cache = {}
+organizational_path_cache_ttl = 3600  # 1 hour cache for organizational paths
+
 # Disk cache configuration (using /tmp for Cloud Run)
 DISK_CACHE_DIR = '/tmp/qonnect_cache'
 DISK_CACHE_TTL = None  # No expiry - cache is permanent
@@ -1703,11 +1707,13 @@ def clear_cache():
     """Clear all caches (memory, disk, and GCS) to force recomputation"""
     try:
         # Clear memory caches
-        global connections_result_cache, hierarchy_result_cache
+        global connections_result_cache, hierarchy_result_cache, organizational_path_cache
         connections_cleared = len(connections_result_cache)
         hierarchy_cleared = len(hierarchy_result_cache)
+        org_path_cleared = len(organizational_path_cache)
         connections_result_cache.clear()
         hierarchy_result_cache.clear()
+        organizational_path_cache.clear()
 
         # Clear disk cache
         disk_files_cleared = 0
@@ -1737,6 +1743,7 @@ def clear_cache():
             'stats': {
                 'memory_connections_cleared': connections_cleared,
                 'memory_hierarchy_cleared': hierarchy_cleared,
+                'memory_org_path_cleared': org_path_cleared,
                 'disk_files_cleared': disk_files_cleared,
                 'gcs_files_cleared': gcs_files_cleared
             }
@@ -2033,7 +2040,19 @@ def get_employee_hierarchy_api(employee_ldap):
 
 @bp.route('/api/organizational-path/<from_ldap>/<to_ldap>')
 def get_organizational_path_api(from_ldap, to_ldap):
-    """Get the actual organizational path between two employees"""
+    """Get the actual organizational path between two employees - CACHED"""
+    global organizational_path_cache
+
+    # Check cache first
+    cache_key = f"{from_ldap.lower()}:{to_ldap.lower()}"
+    current_time = time.time()
+
+    if cache_key in organizational_path_cache:
+        cached_data, cache_time = organizational_path_cache[cache_key]
+        if current_time - cache_time < organizational_path_cache_ttl:
+            logger.debug(f"✓ Using cached organizational path for {from_ldap} → {to_ldap}")
+            return jsonify(cached_data)
+
     try:
         from_emp = get_employee_by_ldap(from_ldap)
         to_emp = get_employee_by_ldap(to_ldap)
@@ -2123,7 +2142,11 @@ def get_organizational_path_api(from_ldap, to_ldap):
                 # Path goes from from_emp up through managers to to_emp
                 # Count excludes from_emp, so: i + 1 (managers including to_emp)
                 path = [from_emp] + from_chain[:i+1]
-                return jsonify({'path': path, 'intermediateCount': i + 1})
+                result = {'path': path, 'intermediateCount': i + 1}
+                # Cache the result
+                organizational_path_cache[cache_key] = (result, current_time)
+                logger.debug(f"✓ Cached organizational path for {from_ldap} → {to_ldap} (direct manager chain)")
+                return jsonify(result)
 
         # Check if from_emp is in to_emp's manager chain
         for i, manager in enumerate(to_chain):
@@ -2131,7 +2154,11 @@ def get_organizational_path_api(from_ldap, to_ldap):
                 # Path goes from from_emp down to to_emp
                 # Count excludes from_emp, so: i + 1 (managers down to to_emp)
                 path = [from_emp] + list(reversed(to_chain[:i])) + [to_emp]
-                return jsonify({'path': path, 'intermediateCount': i + 1})
+                result = {'path': path, 'intermediateCount': i + 1}
+                # Cache the result
+                organizational_path_cache[cache_key] = (result, current_time)
+                logger.debug(f"✓ Cached organizational path for {from_ldap} → {to_ldap} (reverse chain)")
+                return jsonify(result)
 
         # Check if they share a common manager
         for i, from_manager in enumerate(from_chain):
@@ -2144,14 +2171,22 @@ def get_organizational_path_api(from_ldap, to_ldap):
                     common_manager = from_manager
                     path_down = list(reversed(to_chain[:j])) + [to_emp]
                     path = path_up + [common_manager] + path_down
-                    return jsonify({'path': path, 'intermediateCount': i + j + 2})
+                    result = {'path': path, 'intermediateCount': i + j + 2}
+                    # Cache the result
+                    organizational_path_cache[cache_key] = (result, current_time)
+                    logger.debug(f"✓ Cached organizational path for {from_ldap} → {to_ldap} (common manager)")
+                    return jsonify(result)
 
         # No relationship found - return estimate based on chain lengths
         # Path: from_emp -> all from_chain -> all to_chain -> to_emp
         # Count excludes from_emp, so: len(from_chain) + len(to_chain) + 1 (to_emp)
         estimate = len(from_chain) + len(to_chain) + 1
         path = [from_emp] + from_chain + list(reversed(to_chain)) + [to_emp]
-        return jsonify({'path': path, 'intermediateCount': estimate})
+        result = {'path': path, 'intermediateCount': estimate}
+        # Cache the result
+        organizational_path_cache[cache_key] = (result, current_time)
+        logger.debug(f"✓ Cached organizational path for {from_ldap} → {to_ldap} (estimate)")
+        return jsonify(result)
 
     except Exception as e:
         logger.error(f"Organizational path API error for {from_ldap} -> {to_ldap}: {e}")
