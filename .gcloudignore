@@ -1,12 +1,58 @@
-# Ignore these files when deploying
+# Ignore these files when deploying to Cloud Run
+# This keeps the deployment size small and excludes unnecessary files
+
+# Git files
 .git/
 .gitignore
-.DS_Store
+.gitattributes
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Virtual environments
 .env
 .venv/
 venv/
+
+# Testing
 .pytest_cache/
+
+# Documentation (not needed on Cloud Run)
+*.md
+CACHE_MANAGEMENT.md
+CACHE_WARMING_GUIDE.md
+DEPLOYMENT_GUIDE.md
+OPTIMIZATION_RECOMMENDATIONS.md
+PERFORMANCE_FIX_SUMMARY.md
+README.md
+
+# Development and testing scripts (run locally, not on Cloud Run)
+test_*.py
+test_*.sh
+warm_cache.py
+sync_sheets_to_json.py
+clear_cache.sh
+sync_and_clear.sh
+sync_to_gcs.sh
+run_local.sh
+run_with_gcs.sh
+restore-credentials.sh
+
+# Local data directory (Cloud Run uses GCS, not local files)
+data/
+
+# Log files
+*.log
+app.log
+
+# macOS files
+.DS_Store
+
+# Claude Code config
+.claude/
+
+# App Engine config (using Cloud Run, not App Engine)
+app.yaml

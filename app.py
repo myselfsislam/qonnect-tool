@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, render_template_string, send_from_directory, session, redirect, url_for, render_template, Blueprint, make_response
+from flask import Flask, jsonify, request, render_template_string, send_from_directory, session, redirect, url_for, render_template, Blueprint
 from flask_cors import CORS
 import pandas as pd
 import json
@@ -56,8 +56,8 @@ class APIRateLimiter:
 # Global rate limiter instance
 api_rate_limiter = APIRateLimiter(min_interval=0.01)  # 0.01 seconds between calls - minimal delay while respecting quotas
 
-# Configure logging
-logging.basicConfig(level=logging.WARNING)
+# Configure logging (INFO level to show cache hits/misses)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
             # Google Sheets Configuration - Optimized
@@ -112,22 +112,15 @@ employees_cache_ttl = 1800  # 30 minutes cache for employees
 
 # Cache for computed connections per employee
 connections_result_cache = {}
-connections_result_cache_ttl = 3600  # 1 hour cache for computed connections
+connections_result_cache_ttl = None  # PERMANENT - Never expires! Cache lives forever (backed by GCS)
 
 # Cache for employee hierarchy lookups
 hierarchy_result_cache = {}
-hierarchy_result_cache_ttl = 3600  # 1 hour cache for hierarchy
-
-# Cache for organizational path lookups
-organizational_path_cache = {}
-organizational_path_cache_ttl = float('inf')  # Infinite cache - never expires (manual clear only)
+hierarchy_result_cache_ttl = None  # PERMANENT - Never expires! Cache lives forever (backed by GCS)
 
 # Disk cache configuration (using /tmp for Cloud Run)
 DISK_CACHE_DIR = '/tmp/qonnect_cache'
 DISK_CACHE_TTL = None  # No expiry - cache is permanent
-
-# Cache version - increment this to invalidate all old caches when schema changes
-CACHE_VERSION = 'v3_infinite_cache'  # v3: Infinite cache with validation + pre-computed paths
 
 # GCS cache configuration for persistent storage (permanent cache)
 GCS_CACHE_ENABLED = os.environ.get('USE_GCS_CACHE', 'true').lower() == 'true'
@@ -1287,7 +1280,8 @@ def get_employee_hierarchy(employee_ldap):
     cache_key = employee_ldap.lower() if employee_ldap else ''
     if cache_key in hierarchy_result_cache:
         cached_data, cache_time = hierarchy_result_cache[cache_key]
-        if current_time - cache_time < hierarchy_result_cache_ttl:
+        # Check if cache is valid (permanent cache if TTL is None, or within TTL window)
+        if hierarchy_result_cache_ttl is None or current_time - cache_time < hierarchy_result_cache_ttl:
             return cached_data
 
     # Check disk cache if not in memory
@@ -1668,35 +1662,7 @@ def declare():
 def search():
     try:
         with open('templates/search.html', 'r', encoding='utf-8') as f:
-            html = f.read()
-
-            # Check if nocache parameter is present to bypass CDN caching
-            nocache = request.args.get('nocache', '0')
-            if nocache == '1':
-                response = make_response(html)
-                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
-                response.headers['Pragma'] = 'no-cache'
-                response.headers['Expires'] = '0'
-                response.headers['X-Cache-Bypass'] = 'true'
-                return response
-
-            return html
-    except FileNotFoundError:
-        return '<h1>Search page not found</h1><a href="/">Back to Home</a>'
-
-@bp.route('/search-fast')
-@login_required
-def search_fast():
-    """New route to bypass CDN cache - serves same optimized search page"""
-    try:
-        with open('templates/search.html', 'r', encoding='utf-8') as f:
-            html = f.read()
-            # Add header to prevent caching
-            response = make_response(html)
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
-            return response
+            return f.read()
     except FileNotFoundError:
         return '<h1>Search page not found</h1><a href="/">Back to Home</a>'
 
@@ -1738,13 +1704,11 @@ def clear_cache():
     """Clear all caches (memory, disk, and GCS) to force recomputation"""
     try:
         # Clear memory caches
-        global connections_result_cache, hierarchy_result_cache, organizational_path_cache
+        global connections_result_cache, hierarchy_result_cache
         connections_cleared = len(connections_result_cache)
         hierarchy_cleared = len(hierarchy_result_cache)
-        org_path_cleared = len(organizational_path_cache)
         connections_result_cache.clear()
         hierarchy_result_cache.clear()
-        organizational_path_cache.clear()
 
         # Clear disk cache
         disk_files_cleared = 0
@@ -1774,7 +1738,6 @@ def clear_cache():
             'stats': {
                 'memory_connections_cleared': connections_cleared,
                 'memory_hierarchy_cleared': hierarchy_cleared,
-                'memory_org_path_cleared': org_path_cleared,
                 'disk_files_cleared': disk_files_cleared,
                 'gcs_files_cleared': gcs_files_cleared
             }
@@ -1782,6 +1745,207 @@ def clear_cache():
 
     except Exception as e:
         logger.error(f"Cache clear error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@bp.route('/api/cache-stats')
+def cache_stats():
+    """Get cache statistics - shows what's cached and cache performance"""
+    try:
+        # Memory cache stats
+        memory_connections = len(connections_result_cache)
+        memory_hierarchy = len(hierarchy_result_cache)
+
+        # Disk cache stats
+        disk_files = 0
+        disk_size_bytes = 0
+        disk_items = []
+        if os.path.exists(DISK_CACHE_DIR):
+            for filename in os.listdir(DISK_CACHE_DIR):
+                if filename.endswith('.pkl'):
+                    file_path = os.path.join(DISK_CACHE_DIR, filename)
+                    file_size = os.path.getsize(file_path)
+                    disk_files += 1
+                    disk_size_bytes += file_size
+
+                    # Try to extract employee LDAP from filename
+                    try:
+                        with open(file_path, 'rb') as f:
+                            data = pickle.load(f)
+                            # If it's a connections result, extract some info
+                            if isinstance(data, list) and len(data) > 0:
+                                disk_items.append({
+                                    'file': filename,
+                                    'size_kb': round(file_size / 1024, 2),
+                                    'connections_count': len(data)
+                                })
+                    except:
+                        pass
+
+        # GCS cache stats
+        gcs_files = 0
+        gcs_size_bytes = 0
+        gcs_items = []
+        if GCS_CACHE_ENABLED:
+            try:
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(GCS_CACHE_BUCKET)
+                blobs = bucket.list_blobs(prefix=GCS_CACHE_PREFIX)
+                for blob in blobs:
+                    gcs_files += 1
+                    gcs_size_bytes += blob.size
+                    gcs_items.append({
+                        'name': blob.name.replace(GCS_CACHE_PREFIX, ''),
+                        'size_kb': round(blob.size / 1024, 2),
+                        'updated': blob.updated.isoformat() if blob.updated else None
+                    })
+            except Exception as gcs_error:
+                logger.error(f"Error getting GCS cache stats: {gcs_error}")
+
+        return jsonify({
+            'success': True,
+            'memory': {
+                'connections_cached': memory_connections,
+                'hierarchy_cached': memory_hierarchy,
+                'total_items': memory_connections + memory_hierarchy
+            },
+            'disk': {
+                'files_count': disk_files,
+                'size_mb': round(disk_size_bytes / (1024 * 1024), 2),
+                'items': disk_items[:10]  # Show first 10 items
+            },
+            'gcs': {
+                'files_count': gcs_files,
+                'size_mb': round(gcs_size_bytes / (1024 * 1024), 2),
+                'items': gcs_items[:10]  # Show first 10 items
+            },
+            'config': {
+                'gcs_enabled': GCS_CACHE_ENABLED,
+                'connections_ttl_days': 'PERMANENT' if connections_result_cache_ttl is None else round(connections_result_cache_ttl / 86400),
+                'hierarchy_ttl_days': 'PERMANENT' if hierarchy_result_cache_ttl is None else round(hierarchy_result_cache_ttl / 86400)
+            }
+        })
+    except Exception as e:
+        logger.error(f"Cache stats error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@bp.route('/api/cache-delete/<employee_ldap>', methods=['DELETE'])
+def delete_cache_item(employee_ldap):
+    """Delete cache for a specific employee - admin function"""
+    try:
+        deleted = []
+
+        # Clear from memory cache
+        cache_key = employee_ldap.lower()
+        if cache_key in connections_result_cache:
+            del connections_result_cache[cache_key]
+            deleted.append('memory_connections')
+        if cache_key in hierarchy_result_cache:
+            del hierarchy_result_cache[cache_key]
+            deleted.append('memory_hierarchy')
+
+        # Clear from disk cache
+        disk_keys = [
+            f'connections_result_{employee_ldap}',
+            f'hierarchy_result_{cache_key}'
+        ]
+        for disk_key in disk_keys:
+            cache_path = get_disk_cache_path(disk_key)
+            if os.path.exists(cache_path):
+                os.remove(cache_path)
+                deleted.append(f'disk_{disk_key}')
+
+        # Clear from GCS cache
+        if GCS_CACHE_ENABLED:
+            try:
+                storage_client = storage.Client()
+                bucket = storage_client.bucket(GCS_CACHE_BUCKET)
+                for disk_key in disk_keys:
+                    blob_name = get_gcs_cache_key(disk_key)
+                    blob = bucket.blob(blob_name)
+                    if blob.exists():
+                        blob.delete()
+                        deleted.append(f'gcs_{disk_key}')
+            except Exception as gcs_error:
+                logger.error(f"Error deleting from GCS cache: {gcs_error}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Cache deleted for {employee_ldap}',
+            'deleted': deleted
+        })
+    except Exception as e:
+        logger.error(f"Cache delete error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@bp.route('/api/cache-warmup', methods=['POST'])
+def cache_warmup_endpoint():
+    """Warm up cache for specific employees or all employees with connections"""
+    try:
+        data = request.get_json() or {}
+        employee_ldaps = data.get('employee_ldaps', [])
+        warm_all = data.get('warm_all', False)
+
+        warmed = []
+        skipped = []
+        errors = []
+
+        if warm_all:
+            # Warm up cache for all employees who have declared connections
+            try:
+                records = get_cached_connections_data()
+                unique_ldaps = set()
+                for rec in records:
+                    google_ldap = rec.get('Google Employee LDAP', '').lower()
+                    if google_ldap:
+                        unique_ldaps.add(google_ldap)
+
+                employee_ldaps = list(unique_ldaps)
+                logger.info(f"🔥 Warming cache for {len(employee_ldaps)} employees with connections")
+            except Exception as e:
+                return jsonify({
+                    'success': False,
+                    'error': f'Failed to get employees list: {str(e)}'
+                }), 500
+
+        # Warm up cache for each employee
+        for ldap in employee_ldaps:
+            try:
+                # Check if already cached in GCS (skip if already warmed)
+                disk_cache_key = f'connections_result_{ldap}'
+                gcs_cached = load_from_gcs_cache(disk_cache_key)
+
+                if gcs_cached:
+                    skipped.append(ldap)
+                    logger.debug(f"✓ Skipping {ldap} - already cached")
+                else:
+                    # Not cached, compute and cache
+                    logger.info(f"🔥 Warming cache for {ldap}")
+                    connections = get_connections_data(ldap)
+                    warmed.append({
+                        'ldap': ldap,
+                        'connections_count': len(connections)
+                    })
+                    logger.debug(f"✓ Cached {len(connections)} connections for {ldap}")
+            except Exception as e:
+                errors.append({
+                    'ldap': ldap,
+                    'error': str(e)
+                })
+                logger.error(f"❌ Error warming cache for {ldap}: {e}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Cache warmup complete',
+            'stats': {
+                'warmed': len(warmed),
+                'skipped': len(skipped),
+                'errors': len(errors)
+            },
+            'warmed': warmed[:10],  # Show first 10
+            'errors': errors[:5]  # Show first 5 errors
+        })
+    except Exception as e:
+        logger.error(f"Cache warmup error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @bp.route('/api/search-employees')
@@ -2069,125 +2233,40 @@ def get_employee_hierarchy_api(employee_ldap):
         logger.error(f"Hierarchy API error for {employee_ldap}: {e}")
         return jsonify({'error': 'Failed to get hierarchy'}), 500
 
-def calculate_actual_organizational_path(from_emp, to_emp):
-    """
-    Calculate the organizational path between two employees (helper function).
-    Returns dict with 'path' and 'intermediateCount' keys.
-    """
-    from_ldap = from_emp.get('ldap', '').lower()
-    to_ldap = to_emp.get('ldap', '').lower()
-
-    # Build manager chains for both employees using manager_info
-    from_chain = []
-    to_chain = []
-
-    # Build from_emp's manager chain
-    current = from_emp
-    visited = set()
-    max_depth = 20  # Prevent infinite loops
-    depth = 0
-    while current and depth < max_depth:
-        depth += 1
-        manager = None
-        manager_ldap = None
-
-        if current.get('manager_info'):
-            manager_ldap = current['manager_info']['ldap']
-            if manager_ldap not in visited:
-                visited.add(manager_ldap)
-                manager = get_employee_by_ldap(manager_ldap)
-                if manager:
-                    from_chain.append(manager)
-                    current = manager
-                else:
-                    sundar = get_employee_by_ldap('sundar')
-                    if sundar and 'sundar' not in visited:
-                        from_chain.append(sundar)
-                    break
-            else:
-                break
-        else:
-            sundar = get_employee_by_ldap('sundar')
-            if sundar and 'sundar' not in visited:
-                from_chain.append(sundar)
-            break
-
-    # Build to_emp's manager chain
-    current = to_emp
-    visited = set()
-    depth = 0
-    while current and depth < max_depth:
-        depth += 1
-        manager = None
-        manager_ldap = None
-
-        if current.get('manager_info'):
-            manager_ldap = current['manager_info']['ldap']
-            if manager_ldap not in visited:
-                visited.add(manager_ldap)
-                manager = get_employee_by_ldap(manager_ldap)
-                if manager:
-                    to_chain.append(manager)
-                    current = manager
-                else:
-                    sundar = get_employee_by_ldap('sundar')
-                    if sundar and 'sundar' not in visited:
-                        to_chain.append(sundar)
-                    break
-            else:
-                break
-        else:
-            sundar = get_employee_by_ldap('sundar')
-            if sundar and 'sundar' not in visited:
-                to_chain.append(sundar)
-            break
-
-    # Now build the complete path
-    path = []
-
-    # Check if to_emp is in from_emp's manager chain
-    for i, manager in enumerate(from_chain):
-        if manager['ldap'].lower() == to_ldap:
-            path = [from_emp] + from_chain[:i+1]
-            return {'path': path, 'intermediateCount': i + 1}
-
-    # Check if from_emp is in to_emp's manager chain
-    for i, manager in enumerate(to_chain):
-        if manager['ldap'].lower() == from_ldap:
-            path = [from_emp] + list(reversed(to_chain[:i])) + [to_emp]
-            return {'path': path, 'intermediateCount': i + 1}
-
-    # Check if they share a common manager
-    for i, from_manager in enumerate(from_chain):
-        for j, to_manager in enumerate(to_chain):
-            if from_manager['ldap'].lower() == to_manager['ldap'].lower():
-                path_up = [from_emp] + from_chain[:i]
-                common_manager = from_manager
-                path_down = list(reversed(to_chain[:j])) + [to_emp]
-                path = path_up + [common_manager] + path_down
-                return {'path': path, 'intermediateCount': i + j + 2}
-
-    # No relationship found - return estimate based on chain lengths
-    estimate = len(from_chain) + len(to_chain) + 1
-    path = [from_emp] + from_chain + list(reversed(to_chain)) + [to_emp]
-    return {'path': path, 'intermediateCount': estimate}
-
 @bp.route('/api/organizational-path/<from_ldap>/<to_ldap>')
 def get_organizational_path_api(from_ldap, to_ldap):
-    """Get the actual organizational path between two employees - CACHED"""
-    global organizational_path_cache
-
-    # Check cache first
-    cache_key = f"{from_ldap.lower()}:{to_ldap.lower()}"
-    current_time = time.time()
-
-    if cache_key in organizational_path_cache:
-        cached_data, cache_time = organizational_path_cache[cache_key]
-        if current_time - cache_time < organizational_path_cache_ttl:
-            logger.debug(f"✓ Using cached organizational path for {from_ldap} → {to_ldap}")
-            return jsonify(cached_data)
-
+    """Get the actual organizational path between two employees (CACHED)"""
     try:
+        # Check cache first (3-tier: memory -> disk -> GCS)
+        current_time = time.time()
+        cache_key = f'org_path_{from_ldap}_{to_ldap}'
+
+        # Check memory cache
+        if cache_key in hierarchy_result_cache:
+            cached_data, cache_time = hierarchy_result_cache[cache_key]
+            # Check if cache is valid (permanent cache if TTL is None, or within TTL window)
+            if hierarchy_result_cache_ttl is None or current_time - cache_time < hierarchy_result_cache_ttl:
+                logger.info(f"⚡ CACHE HIT (Memory): Organizational path {from_ldap} -> {to_ldap}")
+                return jsonify(cached_data)
+
+        # Check disk cache
+        disk_cached = load_from_disk_cache(cache_key)
+        if disk_cached:
+            logger.info(f"⚡ CACHE HIT (Disk): Organizational path {from_ldap} -> {to_ldap}")
+            hierarchy_result_cache[cache_key] = (disk_cached, current_time)
+            return jsonify(disk_cached)
+
+        # Check GCS cache
+        gcs_cached = load_from_gcs_cache(cache_key)
+        if gcs_cached:
+            logger.info(f"⚡ CACHE HIT (GCS): Organizational path {from_ldap} -> {to_ldap}")
+            save_to_disk_cache(cache_key, gcs_cached)
+            hierarchy_result_cache[cache_key] = (gcs_cached, current_time)
+            return jsonify(gcs_cached)
+
+        # Cache miss - compute the path
+        logger.info(f"🔄 CACHE MISS: Computing organizational path {from_ldap} -> {to_ldap}")
+
         from_emp = get_employee_by_ldap(from_ldap)
         to_emp = get_employee_by_ldap(to_ldap)
 
@@ -2278,8 +2357,10 @@ def get_organizational_path_api(from_ldap, to_ldap):
                 path = [from_emp] + from_chain[:i+1]
                 result = {'path': path, 'intermediateCount': i + 1}
                 # Cache the result
-                organizational_path_cache[cache_key] = (result, current_time)
-                logger.debug(f"✓ Cached organizational path for {from_ldap} → {to_ldap} (direct manager chain)")
+                hierarchy_result_cache[cache_key] = (result, current_time)
+                save_to_disk_cache(cache_key, result)
+                save_to_gcs_cache(cache_key, result)
+                logger.info(f"✅ CACHED: Organizational path {from_ldap} -> {to_ldap} (via manager chain)")
                 return jsonify(result)
 
         # Check if from_emp is in to_emp's manager chain
@@ -2290,8 +2371,10 @@ def get_organizational_path_api(from_ldap, to_ldap):
                 path = [from_emp] + list(reversed(to_chain[:i])) + [to_emp]
                 result = {'path': path, 'intermediateCount': i + 1}
                 # Cache the result
-                organizational_path_cache[cache_key] = (result, current_time)
-                logger.debug(f"✓ Cached organizational path for {from_ldap} → {to_ldap} (reverse chain)")
+                hierarchy_result_cache[cache_key] = (result, current_time)
+                save_to_disk_cache(cache_key, result)
+                save_to_gcs_cache(cache_key, result)
+                logger.info(f"✅ CACHED: Organizational path {from_ldap} -> {to_ldap} (direct report)")
                 return jsonify(result)
 
         # Check if they share a common manager
@@ -2307,8 +2390,10 @@ def get_organizational_path_api(from_ldap, to_ldap):
                     path = path_up + [common_manager] + path_down
                     result = {'path': path, 'intermediateCount': i + j + 2}
                     # Cache the result
-                    organizational_path_cache[cache_key] = (result, current_time)
-                    logger.debug(f"✓ Cached organizational path for {from_ldap} → {to_ldap} (common manager)")
+                    hierarchy_result_cache[cache_key] = (result, current_time)
+                    save_to_disk_cache(cache_key, result)
+                    save_to_gcs_cache(cache_key, result)
+                    logger.info(f"✅ CACHED: Organizational path {from_ldap} -> {to_ldap} (common manager)")
                     return jsonify(result)
 
         # No relationship found - return estimate based on chain lengths
@@ -2318,73 +2403,15 @@ def get_organizational_path_api(from_ldap, to_ldap):
         path = [from_emp] + from_chain + list(reversed(to_chain)) + [to_emp]
         result = {'path': path, 'intermediateCount': estimate}
         # Cache the result
-        organizational_path_cache[cache_key] = (result, current_time)
-        logger.debug(f"✓ Cached organizational path for {from_ldap} → {to_ldap} (estimate)")
+        hierarchy_result_cache[cache_key] = (result, current_time)
+        save_to_disk_cache(cache_key, result)
+        save_to_gcs_cache(cache_key, result)
+        logger.info(f"✅ CACHED: Organizational path {from_ldap} -> {to_ldap} (estimate)")
         return jsonify(result)
 
     except Exception as e:
         logger.error(f"Organizational path API error for {from_ldap} -> {to_ldap}: {e}")
         return jsonify({'error': 'Failed to get organizational path'}), 500
-
-@bp.route('/api/clear-organizational-cache', methods=['POST'])
-def clear_organizational_cache_api():
-    """Clear all organizational caches (memory, disk, GCS) - Admin endpoint"""
-    global organizational_path_cache, connections_result_cache, hierarchy_result_cache
-
-    try:
-        # Clear in-memory caches
-        org_path_count = len(organizational_path_cache)
-        connections_count = len(connections_result_cache)
-        hierarchy_count = len(hierarchy_result_cache)
-
-        organizational_path_cache.clear()
-        connections_result_cache.clear()
-        hierarchy_result_cache.clear()
-
-        logger.info(f"✓ Cleared in-memory caches: {org_path_count} org paths, {connections_count} connections, {hierarchy_count} hierarchies")
-
-        # Clear disk cache
-        import shutil
-        if os.path.exists(DISK_CACHE_DIR):
-            shutil.rmtree(DISK_CACHE_DIR)
-            os.makedirs(DISK_CACHE_DIR, exist_ok=True)
-            logger.info(f"✓ Cleared disk cache directory: {DISK_CACHE_DIR}")
-
-        # Clear GCS cache (delete all cache files)
-        gcs_cleared_count = 0
-        if GCS_CACHE_ENABLED:
-            try:
-                from google.cloud import storage
-                client = storage.Client()
-                bucket = client.bucket(GCS_CACHE_BUCKET)
-                blobs = bucket.list_blobs(prefix=GCS_CACHE_PREFIX)
-                for blob in blobs:
-                    blob.delete()
-                    gcs_cleared_count += 1
-                logger.info(f"✓ Cleared {gcs_cleared_count} files from GCS cache")
-            except Exception as gcs_error:
-                logger.warning(f"Failed to clear GCS cache: {gcs_error}")
-
-        return jsonify({
-            'success': True,
-            'message': f'Cache cleared successfully',
-            'details': {
-                'memory': {
-                    'organizational_paths': org_path_count,
-                    'connections': connections_count,
-                    'hierarchies': hierarchy_count
-                },
-                'disk': 'cleared',
-                'gcs': f'{gcs_cleared_count} files deleted' if GCS_CACHE_ENABLED else 'disabled'
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"Failed to clear organizational cache: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
 
 @bp.route('/api/employees/<employee_id>')
 def get_employee_details(employee_id):
@@ -2880,57 +2907,36 @@ def get_connections_data(employee_ldap):
     """Get actual organizational connections and hierarchy for an employee, including those from Google Sheets - INTERNAL VERSION"""
     global connections_result_cache
 
-    # Helper function to validate cache has organizationalPath fields
-    def has_organizational_paths(connections_list):
-        """Check if cached connections have pre-computed organizational paths"""
-        if not connections_list or len(connections_list) == 0:
-            return True  # Empty list is valid
-        # Check first connection with intermediateLdap - it should have organizationalPath
-        for conn in connections_list:
-            if conn.get('intermediateLdap'):
-                return 'organizationalPath' in conn
-        return True  # No connections with bridges, so no paths needed
-
     # Check cache first (memory cache)
     current_time = time.time()
     cache_key = employee_ldap
     if cache_key in connections_result_cache:
         cached_data, cache_time = connections_result_cache[cache_key]
-        if current_time - cache_time < connections_result_cache_ttl:
-            # Validate cache has organizational paths
-            if has_organizational_paths(cached_data):
-                logger.debug(f"✓ Using memory cached connections for {employee_ldap}")
-                return cached_data
-            else:
-                logger.debug(f"⚠ Memory cache missing organizationalPath, invalidating...")
-                del connections_result_cache[cache_key]
+        # Check if cache is valid (permanent cache if TTL is None, or within TTL window)
+        if connections_result_cache_ttl is None or current_time - cache_time < connections_result_cache_ttl:
+            logger.info(f"⚡ CACHE HIT (Memory): Instant retrieval for {employee_ldap} ({len(cached_data)} connections)")
+            return cached_data
 
-    # Check disk cache if not in memory (include cache version in key to invalidate old caches)
-    disk_cache_key = f'connections_result_{CACHE_VERSION}_{employee_ldap}'
+    # Check disk cache if not in memory
+    disk_cache_key = f'connections_result_{employee_ldap}'
     disk_cached = load_from_disk_cache(disk_cache_key)
     if disk_cached:
-        # Validate cache has organizational paths
-        if has_organizational_paths(disk_cached):
-            logger.debug(f"✓ Using disk cached connections for {employee_ldap}")
-            # Also populate memory cache for faster subsequent access
-            connections_result_cache[cache_key] = (disk_cached, current_time)
-            return disk_cached
-        else:
-            logger.debug(f"⚠ Disk cache missing organizationalPath, invalidating...")
-            # Don't return, let it recompute
+        logger.info(f"⚡ CACHE HIT (Disk): Fast retrieval for {employee_ldap} ({len(disk_cached)} connections)")
+        # Also populate memory cache for faster subsequent access
+        connections_result_cache[cache_key] = (disk_cached, current_time)
+        return disk_cached
 
-    # Check GCS cache if not in disk (cache key includes version to invalidate old caches)
+    # Check GCS cache if not in disk (persistent across deployments)
     gcs_cached = load_from_gcs_cache(disk_cache_key)
     if gcs_cached:
-        # Validate cache has organizational paths
-        if has_organizational_paths(gcs_cached):
-            logger.debug(f"✓ Using GCS cached connections for {employee_ldap}")
-            # Populate both disk and memory cache for faster subsequent access
-            save_to_disk_cache(disk_cache_key, gcs_cached)
-            connections_result_cache[cache_key] = (gcs_cached, current_time)
-            return gcs_cached
-        else:
-            logger.debug(f"⚠ GCS cache missing organizationalPath, invalidating...")
+        logger.info(f"⚡ CACHE HIT (GCS): Retrieved from persistent storage for {employee_ldap} ({len(gcs_cached)} connections)")
+        # Populate both disk and memory cache for faster subsequent access
+        save_to_disk_cache(disk_cache_key, gcs_cached)
+        connections_result_cache[cache_key] = (gcs_cached, current_time)
+        return gcs_cached
+
+    # Cache miss - need to compute
+    logger.info(f"🔄 CACHE MISS: Computing connections for {employee_ldap} (this will take ~10+ seconds)")
 
     try:
         # Get hierarchy information
@@ -3322,70 +3328,55 @@ def get_connections_data(employee_ldap):
 
         logger.debug(f"After deduplication: {len(deduplicated_connections)} unique QT connections for {employee_ldap}")
 
-        # --- PRE-COMPUTE ORGANIZATIONAL PATHS: Add path data to each connection ---
-        logger.debug(f"Pre-computing organizational paths for {len(deduplicated_connections)} connections...")
+        # 🚀 OPTIMIZATION: Pre-compute organizational paths for INSTANT frontend display
+        logger.debug(f"⚡ Pre-computing organizational paths for {len(deduplicated_connections)} connections...")
         for connection in deduplicated_connections:
-            bridge_ldap = connection.get('intermediateLdap')
-            if bridge_ldap:
+            if connection.get('intermediateLdap'):
                 try:
-                    # Get organizational path from employee to bridge
-                    path_cache_key = f"{employee_ldap.lower()}:{bridge_ldap.lower()}"
-                    path_current_time = time.time()
+                    # Load organizational path from cache (it was computed during transitive connection search!)
+                    cache_key = f'org_path_{employee_ldap}_{connection["intermediateLdap"]}'
 
-                    # Check organizational_path_cache first
-                    path_data = None
-                    if path_cache_key in organizational_path_cache:
-                        cached_path, cache_time = organizational_path_cache[path_cache_key]
-                        if path_current_time - cache_time < organizational_path_cache_ttl:
-                            path_data = cached_path
-                            logger.debug(f"  ✓ Using cached path for {employee_ldap} → {bridge_ldap}")
-
-                    # If not in cache, compute it
-                    if not path_data:
-                        # Get employees
-                        from_emp = get_employee_by_ldap(employee_ldap)
-                        to_emp = get_employee_by_ldap(bridge_ldap)
-
-                        if from_emp and to_emp:
-                            # Call the path calculation logic directly (similar to get_organizational_path_api)
-                            path_result = calculate_actual_organizational_path(from_emp, to_emp)
-                            if path_result:
-                                path_data = path_result
-                                # Cache it for future use
-                                organizational_path_cache[path_cache_key] = (path_data, path_current_time)
-                                logger.debug(f"  ✓ Computed and cached path for {employee_ldap} → {bridge_ldap}")
-
-                    # Add path data to connection
-                    if path_data:
-                        connection['organizationalPath'] = {
-                            'path': path_data.get('path', []),
-                            'intermediateCount': path_data.get('intermediateCount', 1),
-                            'pathLength': len(path_data.get('path', []))
-                        }
-                        logger.debug(f"  ✓ Added path to {connection.get('qtName', 'Unknown')}: {connection['organizationalPath']['intermediateCount']} intermediates")
+                    # Check memory cache first
+                    path_result = None
+                    if cache_key in hierarchy_result_cache:
+                        path_result, _ = hierarchy_result_cache[cache_key]
                     else:
-                        connection['organizationalPath'] = None
-                        logger.debug(f"  ⚠ No path computed for {connection.get('qtName', 'Unknown')}")
+                        # Try disk cache
+                        path_result = load_from_disk_cache(cache_key)
+                        if not path_result:
+                            # Try GCS cache
+                            path_result = load_from_gcs_cache(cache_key)
 
+                    if path_result and path_result.get('path'):
+                        # Add to connection data for instant frontend access
+                        connection['precomputedPath'] = {
+                            'path': path_result.get('path', []),
+                            'intermediateCount': path_result.get('intermediateCount', 1),
+                            'pathLength': len(path_result.get('path', []))
+                        }
+                        logger.debug(f"  ✓ Precomputed path for {connection.get('qtName', 'Unknown')}: {connection['precomputedPath']['intermediateCount']} intermediates")
+                    else:
+                        logger.debug(f"  ⚠ Path not in cache for {connection.get('qtName', 'Unknown')}, will compute on demand")
+                        connection['precomputedPath'] = None
                 except Exception as e:
-                    logger.warning(f"Failed to calculate path for {connection.get('qtName', 'Unknown')}: {e}")
-                    connection['organizationalPath'] = None
+                    logger.warning(f"Failed to precompute path for {connection.get('qtName', 'Unknown')}: {e}")
+                    connection['precomputedPath'] = None
             else:
-                # No intermediate person (direct connection)
-                connection['organizationalPath'] = None
+                connection['precomputedPath'] = None
 
-        logger.debug(f"✓ Pre-computed all organizational paths")
+        logger.debug(f"✅ All organizational paths precomputed and ready for instant display!")
 
         # Cache the result for future requests (memory + disk + GCS)
         connections_result_cache[cache_key] = (deduplicated_connections, current_time)
 
-        # Save to disk cache for persistence across restarts (include version in key)
-        disk_cache_key = f'connections_result_{CACHE_VERSION}_{employee_ldap}'
+        # Save to disk cache for persistence across restarts
+        disk_cache_key = f'connections_result_{employee_ldap}'
         save_to_disk_cache(disk_cache_key, deduplicated_connections)
-        logger.debug(f"✓ Saved connections to disk cache for {employee_ldap}")
 
-        # Save to GCS cache for long-term persistence
+        # Save to GCS cache for permanent persistence (shared across all instances)
         save_to_gcs_cache(disk_cache_key, deduplicated_connections)
+
+        logger.info(f"✅ CACHED: Saved {len(deduplicated_connections)} connections for {employee_ldap} to persistent storage. Next access will be instant!")
 
         return deduplicated_connections
 
@@ -3401,7 +3392,24 @@ def get_connections_data(employee_ldap):
 def get_connections(employee_ldap):
     """API endpoint to get connections for an employee"""
     try:
+        # Check if cached before getting data (for logging)
+        start_time = time.time()
+        cache_key = employee_ldap
+        was_cached = (
+            cache_key in connections_result_cache or
+            os.path.exists(get_disk_cache_path(f'connections_result_{employee_ldap}'))
+        )
+
         connections = get_connections_data(employee_ldap)
+        elapsed_time = time.time() - start_time
+
+        # Log cache performance
+        if was_cached:
+            logger.info(f"✅ API returned {len(connections)} connections for {employee_ldap} in {round(elapsed_time * 1000, 2)}ms (cached)")
+        else:
+            logger.info(f"✅ API returned {len(connections)} connections for {employee_ldap} in {round(elapsed_time * 1000, 2)}ms (computed)")
+
+        # Return connections as array for frontend compatibility
         return jsonify(connections)
     except Exception as e:
         # Handle quota exceeded errors silently - don't spam logs

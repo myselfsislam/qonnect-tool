@@ -3,12 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Qonnect - Organization Hierarchy Chart v3.1-FINAL</title>
-    <!-- v3.1-FINAL: API-based hierarchy loading -->
+    <title>Qonnect - Organization Hierarchy Chart v2.7</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <script>console.log('🚀 Qonnect v3.1-FINAL loaded! API hierarchy caching enabled. If you still see slow manager lookups, your browser has OLD cached code.');</script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
@@ -545,10 +543,6 @@
                     <i class="fas fa-handshake"></i>
                     <span class="hidden md:inline">Declare</span>
                 </a>
-                <button onclick="clearAllCaches()" class="p-2 md:px-4 md:py-2 text-white hover:bg-orange-600/90 bg-orange-500 rounded-lg transition-all duration-200 flex items-center gap-2">
-                    <i class="fas fa-broom"></i>
-                    <span class="hidden md:inline">Clear Cache</span>
-                </button>
                 <a href="/smartstakeholdersearch/logout" class="p-2 md:px-4 md:py-2 text-white hover:bg-red-600/90 bg-red-500 rounded-lg transition-all duration-200 flex items-center gap-2">
                     <i class="fas fa-sign-out-alt"></i>
                     <span class="hidden md:inline">Logout</span>
@@ -586,98 +580,23 @@
         let coreTeam = [];
         let selectedEmployee = null;
 
-        // Performance: Add request cache with localStorage persistence
+        // Performance: Add request cache to prevent duplicate API calls
         const requestCache = new Map();
-        const CACHE_TTL = Infinity; // Infinite - never expires (manual clear only)
-        const CACHE_PREFIX = 'qonnect_cache_';
+        const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
         async function cachedFetch(url) {
             const now = Date.now();
-
-            // Check in-memory cache first (fastest)
             if (requestCache.has(url)) {
                 const {data, timestamp} = requestCache.get(url);
                 if (now - timestamp < CACHE_TTL) {
-                    console.log('✓ Cache hit (memory):', url);
                     return data;
                 }
             }
 
-            // Check localStorage cache (survives page refresh)
-            try {
-                const cacheKey = CACHE_PREFIX + btoa(url).substring(0, 50);
-                const cached = localStorage.getItem(cacheKey);
-                if (cached) {
-                    const {data, timestamp} = JSON.parse(cached);
-                    if (now - timestamp < CACHE_TTL) {
-                        console.log('✓ Cache hit (localStorage):', url);
-                        // Restore to memory cache for faster subsequent access
-                        requestCache.set(url, {data, timestamp});
-                        return data;
-                    }
-                }
-            } catch (e) {
-                console.warn('localStorage cache read failed:', e);
-            }
-
-            // Fetch from network
-            console.log('⚡ Fetching from network:', url);
             const response = await fetch(url);
             const data = await response.json();
-
-            // Save to both memory and localStorage
             requestCache.set(url, {data, timestamp: now});
-            try {
-                const cacheKey = CACHE_PREFIX + btoa(url).substring(0, 50);
-                localStorage.setItem(cacheKey, JSON.stringify({data, timestamp: now}));
-            } catch (e) {
-                console.warn('localStorage cache write failed:', e);
-            }
-
             return data;
-        }
-
-        // Clear all caches (memory, localStorage, and backend)
-        async function clearAllCaches() {
-            if (!confirm('Are you sure you want to clear all caches? This will:\n\n• Clear browser localStorage cache\n• Clear in-memory cache\n• Call backend API to clear server cache\n\nAfter clearing, organizational paths will need to be recomputed on first access.')) {
-                return;
-            }
-
-            try {
-                // Clear in-memory cache
-                requestCache.clear();
-                console.log('✓ Cleared in-memory cache');
-
-                // Clear localStorage cache
-                const keys = [];
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key && key.startsWith(CACHE_PREFIX)) {
-                        keys.push(key);
-                    }
-                }
-                keys.forEach(key => localStorage.removeItem(key));
-                console.log(`✓ Cleared ${keys.length} localStorage cache entries`);
-
-                // Call backend API to clear server-side cache
-                const response = await fetch('/smartstakeholdersearch/api/clear-organizational-cache', {
-                    method: 'POST'
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log('✓ Backend cache cleared:', result);
-                    alert(`Cache cleared successfully!\n\n• Browser: ${keys.length} entries cleared\n• Server: ${result.message || 'Cache cleared'}\n\nPage will reload to apply changes.`);
-                    window.location.reload();
-                } else {
-                    console.warn('⚠ Backend cache clear failed, but local cache was cleared');
-                    alert(`Local cache cleared successfully!\n\n• Browser: ${keys.length} entries cleared\n• Server: Failed to clear (${response.status})\n\nPage will reload to apply changes.`);
-                    window.location.reload();
-                }
-            } catch (error) {
-                console.error('Error clearing caches:', error);
-                alert('Error clearing caches. Check console for details.');
-            }
         }
 
         async function loadFlaskData() {
@@ -1509,6 +1428,28 @@
         }
 
         async function buildManagerHierarchy(employee) {
+            // OPTIMIZATION: Use the cached hierarchy API instead of sequential manager lookups!
+            console.log(`⚡ Using cached hierarchy API for ${employee.ldap}`);
+
+            try {
+                // Call the backend hierarchy API which returns the full manager chain in ONE cached call
+                const hierarchyData = await cachedFetch(`/smartstakeholdersearch/api/hierarchy/${employee.ldap}`);
+
+                if (hierarchyData && hierarchyData.manager_chain) {
+                    console.log(`✅ Got ${hierarchyData.manager_chain.length} managers from cached API`);
+                    return hierarchyData.manager_chain;
+                }
+
+                // Fallback to empty if API fails
+                return [];
+            } catch (error) {
+                console.error(`Error fetching hierarchy for ${employee.ldap}:`, error);
+                return [];
+            }
+        }
+
+        async function buildManagerHierarchy_OLD_SLOW(employee) {
+            // OLD IMPLEMENTATION - SLOW (kept for reference, not used)
             const hierarchy = [];
 
             if (!employee.manager) {
@@ -1890,6 +1831,7 @@
         async function buildOrganizationalPath(googleEmployee, connection) {
             /**
              * Use the backend API to get the actual organizational path between employees
+             * OPTIMIZATION: Check for precomputed path first (instant!)
              */
             const bridgeLdap = connection.intermediateLdap;
 
@@ -1897,6 +1839,7 @@
                 googleEmployee: googleEmployee.name,
                 googleLdap: googleEmployee.ldap,
                 bridgeLdap: bridgeLdap,
+                hasPrecomputedPath: !!connection.precomputedPath,
                 connectionData: connection
             });
 
@@ -1905,21 +1848,16 @@
                 return [googleEmployee];
             }
 
-            // NEW: Check if organizational path is pre-computed in connection data
-            if (connection && connection.organizationalPath && connection.organizationalPath.path) {
-                console.log('✓ Using pre-computed organizational path from connection data (INSTANT!)');
-                console.log('Pre-computed path:', {
-                    pathLength: connection.organizationalPath.path.length,
-                    intermediateCount: connection.organizationalPath.intermediateCount,
-                    path: connection.organizationalPath.path.map(e => e.name)
-                });
-                return connection.organizationalPath.path;
+            // 🚀 OPTIMIZATION: Use precomputed path if available (INSTANT, no API call!)
+            if (connection.precomputedPath && connection.precomputedPath.path && connection.precomputedPath.path.length > 0) {
+                console.log('⚡ INSTANT: Using precomputed path (no API call needed!)');
+                console.log('Precomputed path:', connection.precomputedPath.path.map(e => e.name));
+                return connection.precomputedPath.path;
             }
 
-            // Fallback: If not pre-computed, fetch from API (slower)
-            console.log('⚠ Organizational path not pre-computed, fetching from API...');
             try {
-                // Use the organizational path API endpoint as fallback
+                // Fallback: Fetch from API if not precomputed
+                console.log('Fetching from API (precomputed not available)...');
                 const response = await cachedFetch(`/smartstakeholdersearch/api/organizational-path/${googleEmployee.ldap}/${bridgeLdap}`);
 
                 console.log('Organizational path response:', {
@@ -1948,31 +1886,11 @@
             /**
              * Build the complete organizational path from employee up to top manager
              * Returns array: [employee, manager1, manager2, ..., topManager]
-             *
-             * OPTIMIZED: Use cached API endpoint instead of slow local manager lookups
              */
-            try {
-                // Use cached API endpoint for hierarchy (FAST!)
-                const hierarchyData = await cachedFetch(`/smartstakeholdersearch/api/hierarchy/${employee.ldap}`);
-
-                if (hierarchyData && hierarchyData.manager_chain) {
-                    const path = [employee, ...hierarchyData.manager_chain];
-                    console.log(`✓ Full organizational path for ${employee.name} from API (cached):`, {
-                        employee: employee.name,
-                        hierarchyCount: hierarchyData.manager_chain.length,
-                        managers: hierarchyData.manager_chain.map(m => m.name)
-                    });
-                    return path;
-                }
-            } catch (error) {
-                console.warn(`⚠ Failed to get hierarchy from API for ${employee.name}, falling back to local lookup:`, error);
-            }
-
-            // Fallback: Use slow local manager lookups
             const path = [employee];
             const hierarchy = await buildManagerHierarchy(employee);
 
-            console.log(`Full organizational path for ${employee.name} (fallback):`, {
+            console.log(`Full organizational path for ${employee.name}:`, {
                 employee: employee.name,
                 hierarchyCount: hierarchy.length,
                 managers: hierarchy.map(m => m.name)
@@ -2078,22 +1996,47 @@
             // Get the intermediate person (the one who connects to QT)
             const intermediateLdap = connection.intermediateLdap;
 
-            // Find intermediate person and build their organizational path
+            // OPTIMIZATION: Make both hierarchy lookups IN PARALLEL instead of sequential
+            console.log('🚀 Building hierarchies in PARALLEL for speed');
+
             let intermediatePerson = null;
             let intermediatePathEmployees = [];
+            let searchedPathEmployees = [];
 
-            if (intermediateLdap) {
-                const intermediateResults = await cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(intermediateLdap)}`);
-                intermediatePerson = intermediateResults.find(emp => emp.ldap === intermediateLdap);
+            try {
+                // Fetch intermediate person and build BOTH hierarchies in parallel
+                const parallelPromises = [];
 
+                // Promise 1: Get intermediate person details
+                if (intermediateLdap) {
+                    parallelPromises.push(
+                        cachedFetch(`/smartstakeholdersearch/api/search-employees?q=${encodeURIComponent(intermediateLdap)}`)
+                            .then(results => results.find(emp => emp.ldap === intermediateLdap))
+                    );
+                } else {
+                    parallelPromises.push(Promise.resolve(null));
+                }
+
+                // Promise 2: Build searched employee's hierarchy
+                parallelPromises.push(buildFullOrganizationalPath(searchedEmployee));
+
+                // Wait for both to complete in parallel
+                const [foundIntermediatePerson, searchedPath] = await Promise.all(parallelPromises);
+
+                intermediatePerson = foundIntermediatePerson;
+                searchedPathEmployees = searchedPath;
+
+                // Now build intermediate person's hierarchy if found
                 if (intermediatePerson) {
-                    // Build full organizational path for intermediate person
                     intermediatePathEmployees = await buildFullOrganizationalPath(intermediatePerson);
                 }
-            }
 
-            // Build full organizational path for searched employee
-            const searchedPathEmployees = await buildFullOrganizationalPath(searchedEmployee);
+                console.log('✅ Hierarchies built in parallel');
+            } catch (error) {
+                console.error('Error building hierarchies:', error);
+                // Fallback to searched employee only
+                searchedPathEmployees = [searchedEmployee];
+            }
 
             console.log('Searched employee path:', searchedPathEmployees.map(e => e.name));
             console.log('Intermediate person path:', intermediatePathEmployees.map(e => e.name));
