@@ -24,3 +24,19 @@ Thumbs.db
 .env
 .env.local
 credentials.json
+
+# Local data directory
+data/
+*.log
+app.log
+
+# Local development scripts
+run_local.sh
+run_with_gcs.sh
+sync_to_gcs.sh
+sync_sheets_to_json.py
+restore-credentials.sh
+
+# Test files
+test_*.py
+*_test.py
