@@ -34,7 +34,6 @@ app.log
 run_local.sh
 run_with_gcs.sh
 sync_to_gcs.sh
-sync_sheets_to_json.py
 restore-credentials.sh
 
 # Test files
