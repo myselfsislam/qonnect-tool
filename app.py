@@ -32,7 +32,7 @@ bp = Blueprint('smartstakeholder', __name__, url_prefix='/smartstakeholdersearch
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_SECURE'] = True  # Required for HTTPS connections (production and Firebase)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)  # 30 days session lifetime
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True  # Refresh session on each request
 
