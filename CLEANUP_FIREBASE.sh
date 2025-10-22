@@ -1,0 +1,58 @@
+#!/bin/bash
+
+echo "🗑️ Firebase Cleanup Script"
+echo "=========================="
+echo ""
+echo "This will:"
+echo "  1. Remove test.qualitest.info DNS record"
+echo "  2. Leave Firebase Hosting as-is (it's free)"
+echo "  3. Keep your Cloud Run app running"
+echo "  4. Keep your Load Balancer (currently serving production)"
+echo ""
+read -p "Continue? (y/n): " -n 1 -r
+echo ""
+
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Cancelled."
+    exit 0
+fi
+
+echo ""
+echo "Step 1: Remove DNS Record for test.qualitest.info"
+echo "=================================================="
+echo ""
+echo "⚠️  You need to manually remove this DNS record in GoDaddy:"
+echo ""
+echo "   Record Type: CNAME"
+echo "   Host: test"
+echo "   Points to: smartstakeholdersearch.web.app"
+echo ""
+echo "   Go to: https://dcc.godaddy.com/manage/qualitest.info/dns"
+echo "   Find the CNAME record for 'test'"
+echo "   Delete it"
+echo ""
+read -p "Press Enter after you've deleted the DNS record..."
+
+echo ""
+echo "✅ DNS record removed!"
+echo ""
+echo "Step 2: Firebase Hosting"
+echo "========================"
+echo ""
+echo "Firebase Hosting costs $0. No action needed."
+echo "Your defense site files are still there but won't be accessible via test.qualitest.info"
+echo ""
+
+echo "✅ Cleanup Complete!"
+echo ""
+echo "Summary:"
+echo "  ✅ test.qualitest.info - DNS removed (no longer points to Firebase)"
+echo "  ✅ Production - Still running on Load Balancer"
+echo "  ✅ Cloud Run - Still running (required for your app)"
+echo "  ✅ Firebase Hosting - Still exists (FREE, no cost)"
+echo ""
+echo "Monthly Cost: Still ~$24-40/month (no change)"
+echo ""
+echo "💡 Note: Firebase Hosting doesn't cost you anything."
+echo "    The Load Balancer ($20-40/month) is your main cost."
+echo ""
