@@ -218,7 +218,9 @@ async function showSelectedEmployee() {
         const pathContent = await renderConnectionPaths(selectedEmployee);
         mainContent.innerHTML = "";
         mainContent.appendChild(pathContent);
-        lucide.createIcons();
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     } catch (error) {
         console.error('Error showing selected employee:', error);
         mainContent.innerHTML = `<div class="text-center py-16"><p class="text-red-500">Error loading connection paths</p><p class="text-sm text-gray-500 mt-2">${error.message}</p></div>`;
@@ -331,7 +333,9 @@ async function init() {
     await loadFlaskData();
 
     setupSearch();
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
     console.log('Initialization complete! Ready for searches.');
 }
 

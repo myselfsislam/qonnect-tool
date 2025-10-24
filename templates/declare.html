@@ -882,24 +882,28 @@
             // Reset button state
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined') {
+              lucide.createIcons();
+            }
           }
         });
       }
 
       async function init() {
         console.log('🚀 Initializing Enhanced Declare page...');
-        
+
         // Initialize QT team data
         coreTeam = qtTeamData;
-        
+
         // Load Google employees
         await fetchGoogleEmployees();
-        
+
         // Setup functionality
         setupSearch();
         setupSaveButton();
-        lucide.createIcons();
+        if (typeof lucide !== 'undefined') {
+          lucide.createIcons();
+        }
         
         console.log('✅ Initialized with:', googleEmployees.length, 'Google employees,', coreTeam.length, 'QT team members');
       }

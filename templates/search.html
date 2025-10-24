@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Cache bust: 2025-10-24-v2 -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -1008,7 +1009,9 @@
                 const pathContent = await renderConnectionPaths(selectedEmployee);
                 mainContent.innerHTML = "";
                 mainContent.appendChild(pathContent);
-                lucide.createIcons();
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
             } catch (error) {
                 mainContent.innerHTML = '<div class="text-center py-16"><p class="text-red-500">Error loading connection paths</p><p class="text-sm text-gray-500 mt-2">' + error.message + '</p></div>';
             }
@@ -1816,11 +1819,15 @@
                         const pathContent = await renderConnectionPaths(googleEmployee);
                         mainContent.innerHTML = "";
                         mainContent.appendChild(pathContent);
-                        lucide.createIcons();
+                        if (typeof lucide !== 'undefined') {
+                            lucide.createIcons();
+                        }
                     });
                 }
 
-                lucide.createIcons();
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
 
             } catch (error) {
                 console.error('Error in showExpandedHierarchy:', error);
@@ -2274,7 +2281,9 @@
         async function init() {
             await loadFlaskData();
             setupSearch();
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
         }
 
         // Clean console - only connection paths
