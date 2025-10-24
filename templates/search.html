@@ -1009,7 +1009,7 @@
                 const pathContent = await renderConnectionPaths(selectedEmployee);
                 mainContent.innerHTML = "";
                 mainContent.appendChild(pathContent);
-                if (typeof lucide !== 'undefined') {
+                if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
                     lucide.createIcons();
                 }
             } catch (error) {
@@ -1819,13 +1819,13 @@
                         const pathContent = await renderConnectionPaths(googleEmployee);
                         mainContent.innerHTML = "";
                         mainContent.appendChild(pathContent);
-                        if (typeof lucide !== 'undefined') {
+                        if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
                             lucide.createIcons();
                         }
                     });
                 }
 
-                if (typeof lucide !== 'undefined') {
+                if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
                     lucide.createIcons();
                 }
 
@@ -2281,7 +2281,7 @@
         async function init() {
             await loadFlaskData();
             setupSearch();
-            if (typeof lucide !== 'undefined') {
+            if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
                 lucide.createIcons();
             }
         }

@@ -882,7 +882,7 @@
             // Reset button state
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
-            if (typeof lucide !== 'undefined') {
+            if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
               lucide.createIcons();
             }
           }
@@ -901,10 +901,10 @@
         // Setup functionality
         setupSearch();
         setupSaveButton();
-        if (typeof lucide !== 'undefined') {
+        if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
           lucide.createIcons();
         }
-        
+
         console.log('✅ Initialized with:', googleEmployees.length, 'Google employees,', coreTeam.length, 'QT team members');
       }
 

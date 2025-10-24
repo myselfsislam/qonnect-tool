@@ -218,7 +218,7 @@ async function showSelectedEmployee() {
         const pathContent = await renderConnectionPaths(selectedEmployee);
         mainContent.innerHTML = "";
         mainContent.appendChild(pathContent);
-        if (typeof lucide !== 'undefined') {
+        if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
             lucide.createIcons();
         }
     } catch (error) {
@@ -333,7 +333,7 @@ async function init() {
     await loadFlaskData();
 
     setupSearch();
-    if (typeof lucide !== 'undefined') {
+    if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
         lucide.createIcons();
     }
     console.log('Initialization complete! Ready for searches.');
