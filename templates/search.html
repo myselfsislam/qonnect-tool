@@ -958,8 +958,12 @@
 
                         // Re-initialize lucide icons for the newly added icon
                         setTimeout(() => {
-                            if (typeof lucide !== 'undefined') {
-                                lucide.createIcons();
+                            if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+                                try {
+                                    lucide.createIcons();
+                                } catch (lucideError) {
+                                    console.warn('Lucide icons initialization failed:', lucideError);
+                                }
                             }
                         }, 0);
                     }
@@ -1010,7 +1014,11 @@
                 mainContent.innerHTML = "";
                 mainContent.appendChild(pathContent);
                 if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-                    lucide.createIcons();
+                    try {
+                        lucide.createIcons();
+                    } catch (lucideError) {
+                        console.warn('Lucide icons initialization failed:', lucideError);
+                    }
                 }
             } catch (error) {
                 mainContent.innerHTML = '<div class="text-center py-16"><p class="text-red-500">Error loading connection paths</p><p class="text-sm text-gray-500 mt-2">' + error.message + '</p></div>';
@@ -1820,13 +1828,21 @@
                         mainContent.innerHTML = "";
                         mainContent.appendChild(pathContent);
                         if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-                            lucide.createIcons();
+                            try {
+                                lucide.createIcons();
+                            } catch (lucideError) {
+                                console.warn('Lucide icons initialization failed:', lucideError);
+                            }
                         }
                     });
                 }
 
                 if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-                    lucide.createIcons();
+                    try {
+                        lucide.createIcons();
+                    } catch (lucideError) {
+                        console.warn('Lucide icons initialization failed:', lucideError);
+                    }
                 }
 
             } catch (error) {
@@ -2282,7 +2298,11 @@
             await loadFlaskData();
             setupSearch();
             if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-                lucide.createIcons();
+                try {
+                    lucide.createIcons();
+                } catch (lucideError) {
+                    console.warn('Lucide icons initialization failed:', lucideError);
+                }
             }
         }
 

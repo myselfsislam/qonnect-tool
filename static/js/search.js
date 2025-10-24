@@ -219,7 +219,11 @@ async function showSelectedEmployee() {
         mainContent.innerHTML = "";
         mainContent.appendChild(pathContent);
         if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-            lucide.createIcons();
+            try {
+                lucide.createIcons();
+            } catch (lucideError) {
+                console.warn('Lucide icons initialization failed:', lucideError);
+            }
         }
     } catch (error) {
         console.error('Error showing selected employee:', error);
@@ -334,7 +338,11 @@ async function init() {
 
     setupSearch();
     if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-        lucide.createIcons();
+        try {
+            lucide.createIcons();
+        } catch (lucideError) {
+            console.warn('Lucide icons initialization failed:', lucideError);
+        }
     }
     console.log('Initialization complete! Ready for searches.');
 }

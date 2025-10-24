@@ -883,7 +883,11 @@
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
             if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-              lucide.createIcons();
+              try {
+                lucide.createIcons();
+              } catch (lucideError) {
+                console.warn('Lucide icons initialization failed:', lucideError);
+              }
             }
           }
         });
@@ -902,7 +906,11 @@
         setupSearch();
         setupSaveButton();
         if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
-          lucide.createIcons();
+          try {
+            lucide.createIcons();
+          } catch (lucideError) {
+            console.warn('Lucide icons initialization failed:', lucideError);
+          }
         }
 
         console.log('✅ Initialized with:', googleEmployees.length, 'Google employees,', coreTeam.length, 'QT team members');
